@@ -1,0 +1,3 @@
+{
+  "extends": "@safe-sphere-ai/config/tsconfig.base.json"
+}

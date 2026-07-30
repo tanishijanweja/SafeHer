@@ -1,0 +1,24 @@
+{
+  "name": "@safe-sphere-ai/auth",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@safe-sphere-ai/db": "workspace:*",
+    "@safe-sphere-ai/env": "workspace:*",
+    "better-auth": "catalog:",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@safe-sphere-ai/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}
