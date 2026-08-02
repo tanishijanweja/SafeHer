@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import dynamic from "next/dynamic";
 
@@ -31,6 +31,20 @@ export default function ReportPage() {
   const [description, setDescription] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [location, setLocation] = useState(DEFAULT_LOCATION);
+  const [locationDenied, setLocationDenied] = useState(false);
+
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      () => setLocationDenied(true),
+    );
+  }, []);
 
   async function handleSubmit() {
     await fetch("http://localhost:3000/reports", {
@@ -79,6 +93,12 @@ export default function ReportPage() {
 
           <div className="flex flex-col gap-1.5">
             <Label>Location</Label>
+            {locationDenied && (
+              <p className="text-xs text-red-500">
+                Location access is blocked. Please enable it in your browser, or select a
+                location manually on the map.
+              </p>
+            )}
             <SafetyMap
               center={location}
               height={320}

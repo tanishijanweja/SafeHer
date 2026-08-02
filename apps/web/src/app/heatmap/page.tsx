@@ -23,23 +23,18 @@ const SafetyMap = dynamic(() => import("@/components/safety-map"), {
 
 type RiskScore = {
   geohash: string;
+  latitude: number;
+  longitude: number;
   combinedScore: number;
+  incidentCount: number;
 };
 
 const MAP_CENTER = { lat: 28.61, lng: 77.2 };
 
-const MARKER_POSITIONS = [
-  { lat: 28.61, lng: 77.2 },
-  { lat: 28.63, lng: 77.22 },
-  { lat: 28.59, lng: 77.18 },
-  { lat: 28.62, lng: 77.24 },
-  { lat: 28.6, lng: 77.16 },
-];
-
 function scoreColor(score: number) {
-  if (score >= 0.7) return "#ef4444";
-  if (score >= 0.4) return "#eab308";
-  return "#22c55e";
+  if (score < 2) return "#22c55e";
+  if (score < 4) return "#eab308";
+  return "#ef4444";
 }
 
 export default function HeatmapPage() {
@@ -51,9 +46,16 @@ export default function HeatmapPage() {
       .then(setScores);
   }, []);
 
-  const markers = MARKER_POSITIONS.map((pos, i) => ({
-    ...pos,
-    combinedScore: scores[i % scores.length]?.combinedScore ?? 0.5,
+  const points = scores.map((score) => ({
+    lat: score.latitude,
+    lng: score.longitude,
+    color: scoreColor(score.combinedScore),
+    popup: (
+      <>
+        <div>Combined Score: {score.combinedScore}</div>
+        <div>Incidents: {score.incidentCount}</div>
+      </>
+    ),
   }));
 
   return (
@@ -70,11 +72,7 @@ export default function HeatmapPage() {
           <SafetyMap
             center={MAP_CENTER}
             height={400}
-            points={markers.map((marker) => ({
-              lat: marker.lat,
-              lng: marker.lng,
-              color: scoreColor(marker.combinedScore),
-            }))}
+            points={points}
           />
         </CardContent>
       </Card>
@@ -88,14 +86,16 @@ export default function HeatmapPage() {
             <thead>
               <tr className="border-b text-left text-muted-foreground">
                 <th className="py-2 pr-4 font-medium">Geohash</th>
-                <th className="py-2 font-medium">Combined Score</th>
+                <th className="py-2 pr-4 font-medium">Combined Score</th>
+                <th className="py-2 font-medium">Incidents</th>
               </tr>
             </thead>
             <tbody>
               {scores.map((score) => (
                 <tr key={score.geohash} className="border-b last:border-0">
                   <td className="py-2 pr-4">{score.geohash}</td>
-                  <td className="py-2">{score.combinedScore}</td>
+                  <td className="py-2 pr-4">{score.combinedScore}</td>
+                  <td className="py-2">{score.incidentCount}</td>
                 </tr>
               ))}
             </tbody>

@@ -1,7 +1,7 @@
 "use client";
 
 import { divIcon } from "leaflet";
-import { CircleMarker, MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
+import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMapEvents } from "react-leaflet";
 
 import "leaflet/dist/leaflet.css";
 
@@ -16,6 +16,7 @@ type MapPoint = {
   lat: number;
   lng: number;
   color?: string;
+  popup?: React.ReactNode;
 };
 
 type SafetyMapProps = {
@@ -60,9 +61,13 @@ export default function SafetyMap({
               center={[point.lat, point.lng]}
               radius={10}
               pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.7 }}
-            />
+            >
+              {point.popup ? <Popup>{point.popup}</Popup> : null}
+            </CircleMarker>
           ) : (
-            <Marker key={i} position={[point.lat, point.lng]} icon={pinIcon} />
+            <Marker key={i} position={[point.lat, point.lng]} icon={pinIcon}>
+              {point.popup ? <Popup>{point.popup}</Popup> : null}
+            </Marker>
           ),
         )}
       </MapContainer>
