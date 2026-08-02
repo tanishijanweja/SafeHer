@@ -10,6 +10,8 @@
     "start": "bun run dist/index.mjs"
   },
   "dependencies": {
+    "@google/genai": "^2.15.0",
+    "@prisma/client": "^7.9.1",
     "@safe-her/auth": "workspace:*",
     "@safe-her/db": "workspace:*",
     "@safe-her/env": "workspace:*",
@@ -21,6 +23,7 @@
   "devDependencies": {
     "@safe-her/config": "workspace:*",
     "@types/bun": "catalog:",
+    "prisma": "^7.9.1",
     "tsdown": "^0.22.14",
     "typescript": "catalog:"
   }

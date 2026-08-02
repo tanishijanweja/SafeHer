@@ -9,6 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@react-google-maps/api": "^2.20.8",
     "@safe-her/env": "workspace:*",
     "@safe-her/ui": "workspace:*",
     "@swc/helpers": "^0.5.23",
