@@ -1,5 +1,5 @@
 {
-  "name": "safe-sphere-ai",
+  "name": "safe-her",
   "private": true,
   "workspaces": {
     "packages": [
@@ -30,22 +30,22 @@
     "check-types": "turbo run check-types",
     "dev:web": "turbo run dev -F web",
     "dev:server": "turbo run dev -F server",
-    "db:push": "turbo run db:push -F @safe-sphere-ai/db",
-    "db:studio": "turbo run db:studio -F @safe-sphere-ai/db",
-    "db:generate": "turbo run db:generate -F @safe-sphere-ai/db",
-    "db:migrate": "turbo run db:migrate -F @safe-sphere-ai/db",
-    "db:start": "turbo run db:start -F @safe-sphere-ai/db",
-    "db:watch": "turbo run db:watch -F @safe-sphere-ai/db",
-    "db:stop": "turbo run db:stop -F @safe-sphere-ai/db",
-    "db:down": "turbo run db:down -F @safe-sphere-ai/db"
+    "db:push": "turbo run db:push -F @safe-her/db",
+    "db:studio": "turbo run db:studio -F @safe-her/db",
+    "db:generate": "turbo run db:generate -F @safe-her/db",
+    "db:migrate": "turbo run db:migrate -F @safe-her/db",
+    "db:start": "turbo run db:start -F @safe-her/db",
+    "db:watch": "turbo run db:watch -F @safe-her/db",
+    "db:stop": "turbo run db:stop -F @safe-her/db",
+    "db:down": "turbo run db:down -F @safe-her/db"
   },
   "dependencies": {
-    "@safe-sphere-ai/env": "workspace:*",
+    "@safe-her/env": "workspace:*",
     "dotenv": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@safe-sphere-ai/config": "workspace:*",
+    "@safe-her/config": "workspace:*",
     "@types/bun": "catalog:",
     "turbo": "^2.10.7",
     "typescript": "catalog:"

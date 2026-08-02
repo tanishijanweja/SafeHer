@@ -1,5 +1,5 @@
 {
-  "extends": "@safe-sphere-ai/config/tsconfig.base.json",
+  "extends": "@safe-her/config/tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
     "outDir": "dist",

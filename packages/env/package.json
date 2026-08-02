@@ -1,5 +1,5 @@
 {
-  "name": "@safe-sphere-ai/env",
+  "name": "@safe-her/env",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@safe-sphere-ai/config": "workspace:*",
+    "@safe-her/config": "workspace:*",
     "@types/bun": "catalog:",
     "typescript": "catalog:"
   }

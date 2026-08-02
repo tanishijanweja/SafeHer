@@ -10,7 +10,7 @@
   "$schema": "https://r2.better-t-stack.dev/schema.json",
   "version": "3.38.0",
   "createdAt": "2026-07-30T11:12:03.817Z",
-  "reproducibleCommand": "bun create better-t-stack@latest safe-sphere-ai --frontend next --backend hono --runtime bun --database postgres --orm prisma --api none --auth better-auth --payments none --addons turborepo --examples none --db-setup docker --web-deploy none --server-deploy none --git --package-manager bun --install",
+  "reproducibleCommand": "bun create better-t-stack@latest safe-her --frontend next --backend hono --runtime bun --database postgres --orm prisma --api none --auth better-auth --payments none --addons turborepo --examples none --db-setup docker --web-deploy none --server-deploy none --git --package-manager bun --install",
   "database": "postgres",
   "orm": "prisma",
   "backend": "hono",

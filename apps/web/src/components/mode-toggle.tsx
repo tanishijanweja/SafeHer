@@ -1,12 +1,12 @@
 "use client";
 
-import { Button } from "@safe-sphere-ai/ui/components/button";
+import { Button } from "@safe-her/ui/components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@safe-sphere-ai/ui/components/dropdown-menu";
+} from "@safe-her/ui/components/dropdown-menu";
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import * as React from "react";

@@ -1,4 +1,4 @@
-import { cn } from "@safe-sphere-ai/ui/lib/utils";
+import { cn } from "@safe-her/ui/lib/utils";
 import * as React from "react";
 
 function MessageGroup({ className, ...props }: React.ComponentProps<"div">) {

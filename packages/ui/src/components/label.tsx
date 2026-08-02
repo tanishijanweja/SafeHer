@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@safe-sphere-ai/ui/lib/utils";
+import { cn } from "@safe-her/ui/lib/utils";
 import * as React from "react";
 
 function Label({ className, ...props }: React.ComponentProps<"label">) {

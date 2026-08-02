@@ -5,5 +5,5 @@ export default defineConfig({
   format: "esm",
   outDir: "./dist",
   clean: true,
-  noExternal: [/@safe-sphere-ai\/.*/],
+  noExternal: [/@safe-her\/.*/],
 });

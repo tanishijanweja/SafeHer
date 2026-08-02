@@ -1,4 +1,4 @@
-import { cn } from "@safe-sphere-ai/ui/lib/utils";
+import { cn } from "@safe-her/ui/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 
 function Empty({ className, ...props }: React.ComponentProps<"div">) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Toaster } from "@safe-sphere-ai/ui/components/sonner";
+import { Toaster } from "@safe-her/ui/components/sonner";
 
 import { ThemeProvider } from "./theme-provider";
 

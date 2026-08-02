@@ -12,11 +12,11 @@
   },
   "iconLibrary": "lucide",
   "aliases": {
-    "components": "@safe-sphere-ai/ui/components",
-    "utils": "@safe-sphere-ai/ui/lib/utils",
-    "hooks": "@safe-sphere-ai/ui/hooks",
-    "lib": "@safe-sphere-ai/ui/lib",
-    "ui": "@safe-sphere-ai/ui/components"
+    "components": "@safe-her/ui/components",
+    "utils": "@safe-her/ui/lib/utils",
+    "hooks": "@safe-her/ui/hooks",
+    "lib": "@safe-her/ui/lib",
+    "ui": "@safe-her/ui/components"
   },
   "menuColor": "default",
   "menuAccent": "subtle",

@@ -21,7 +21,7 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@safe-sphere-ai/ui/*": ["../../packages/ui/src/*"]
+      "@safe-her/ui/*": ["../../packages/ui/src/*"]
     }
   },
   "include": [

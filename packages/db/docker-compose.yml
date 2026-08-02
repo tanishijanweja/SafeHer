@@ -1,17 +1,17 @@
-name: safe-sphere-ai
+name: safe-her
 
 services:
   postgres:
     image: postgres:18
-    container_name: safe-sphere-ai-postgres
+    container_name: safe-her-postgres
     environment:
-      POSTGRES_DB: safe-sphere-ai
+      POSTGRES_DB: safe-her
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
     volumes:
-      - safe-sphere-ai_postgres_data:/var/lib/postgresql
+      - safe-her_postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -20,4 +20,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  safe-sphere-ai_postgres_data:
+  safe-her_postgres_data:

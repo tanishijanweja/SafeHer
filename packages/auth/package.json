@@ -1,5 +1,5 @@
 {
-  "name": "@safe-sphere-ai/auth",
+  "name": "@safe-her/auth",
   "type": "module",
   "exports": {
     ".": {
@@ -11,14 +11,14 @@
   },
   "scripts": {},
   "dependencies": {
-    "@safe-sphere-ai/db": "workspace:*",
-    "@safe-sphere-ai/env": "workspace:*",
+    "@safe-her/db": "workspace:*",
+    "@safe-her/env": "workspace:*",
     "better-auth": "catalog:",
     "dotenv": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@safe-sphere-ai/config": "workspace:*",
+    "@safe-her/config": "workspace:*",
     "typescript": "catalog:"
   }
 }

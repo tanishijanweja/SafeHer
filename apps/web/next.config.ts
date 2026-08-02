@@ -1,4 +1,4 @@
-import "@safe-sphere-ai/env/web";
+import "@safe-her/env/web";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {

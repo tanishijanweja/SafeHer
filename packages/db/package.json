@@ -1,5 +1,5 @@
 {
-  "name": "@safe-sphere-ai/db",
+  "name": "@safe-her/db",
   "type": "module",
   "exports": {
     ".": {
@@ -23,13 +23,13 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
-    "@safe-sphere-ai/env": "workspace:*",
+    "@safe-her/env": "workspace:*",
     "dotenv": "catalog:",
     "pg": "^8.22.0",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@safe-sphere-ai/config": "workspace:*",
+    "@safe-her/config": "workspace:*",
     "@types/pg": "^8.20.0",
     "prisma": "^7.9.1",
     "typescript": "catalog:"

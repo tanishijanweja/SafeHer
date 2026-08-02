@@ -13,8 +13,8 @@
   "iconLibrary": "lucide",
   "aliases": {
     "components": "@/components",
-    "utils": "@safe-sphere-ai/ui/lib/utils",
-    "ui": "@safe-sphere-ai/ui/components",
+    "utils": "@safe-her/ui/lib/utils",
+    "ui": "@safe-her/ui/components",
     "lib": "@/lib",
     "hooks": "@/hooks"
   },
