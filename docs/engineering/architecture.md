@@ -8,7 +8,7 @@
 | Backend | Hono, Better Auth, Prisma ORM, Zod, Bun Runtime |
 | Database | PostgreSQL, PostGIS, pgvector |
 | AI Layer | Google Gemini 2.5 Flash, Gemini Embeddings, Gemini Vision |
-| Maps & Location | Google Maps Platform (Maps, Places, Directions, Geocoding) — can switch to Mapbox/OSM |
+| Maps & Location | OpenStreetMap + Leaflet (in use) — swappable to Google Maps / Mapbox via the `SafeMap` adapter |
 | Deployment | Vercel (Frontend), Railway/Render (Backend), Supabase PostgreSQL (Production DB) |
 
 ## Database Design

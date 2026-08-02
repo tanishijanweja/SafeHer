@@ -1,0 +1,93 @@
+.safeher-map-root {
+  background: #0a0710;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+/* Dark + pink tint applied to the OpenStreetMap tile images */
+.safeher-osm-tiles {
+  filter: invert(0.95) hue-rotate(320deg) saturate(0.9) brightness(0.85) contrast(1.05);
+}
+
+.leaflet-control-attribution {
+  background: rgb(10 7 16 / 0.75) !important;
+  color: rgb(255 178 205 / 0.55) !important;
+  font-size: 9px !important;
+}
+.leaflet-control-attribution a {
+  color: rgb(255 143 184 / 0.9) !important;
+}
+
+.safeher-divicon {
+  background: transparent;
+  border: none;
+}
+
+.safeher-cat-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: var(--mcolor, #f472b6);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  border: 2px solid rgb(10 7 16 / 0.95);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--mcolor, #f472b6) 35%, transparent);
+}
+
+.safeher-sos-marker {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: #ff1f4b;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 0 rgb(255 31 75 / 0.6);
+  animation: safeher-sos-pulse 1.5s ease-out infinite;
+}
+
+@keyframes safeher-sos-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(255 31 75 / 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 18px rgb(255 31 75 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(255 31 75 / 0);
+  }
+}
+
+.safeher-pin-marker {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: var(--pcolor, #f472b6);
+  border: 2px solid #fff;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.45);
+}
+.safeher-pin-marker::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: #0a0710;
+}
+
+.leaflet-tooltip.safeher-tip {
+  background: rgb(10 7 16 / 0.92);
+  border: 1px solid rgb(244 114 182 / 0.35);
+  color: #fdf2f8;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.4);
+}
+.leaflet-tooltip-top.safeher-tip::before {
+  border-top-color: rgb(244 114 182 / 0.35);
+}
