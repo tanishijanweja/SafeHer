@@ -4,6 +4,8 @@ import { env } from "@safe-her/env/server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import reportsRouter from "./routes/reports";
+import heatmapRouter from "./routes/heatmap";
 
 const app = new Hono();
 
@@ -33,5 +35,8 @@ app.get("/health", async (c) => {
     return c.json({ status: "error" }, 500);
   }
 });
+
+app.route("/reports", reportsRouter);
+app.route("/heatmap", heatmapRouter);
 
 export default app;
