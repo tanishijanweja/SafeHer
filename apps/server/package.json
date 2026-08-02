@@ -15,9 +15,11 @@
     "@safe-her/auth": "workspace:*",
     "@safe-her/db": "workspace:*",
     "@safe-her/env": "workspace:*",
+    "@types/ngeohash": "^0.6.8",
     "better-auth": "catalog:",
     "dotenv": "catalog:",
     "hono": "^4.12.32",
+    "ngeohash": "^0.6.4",
     "zod": "catalog:"
   },
   "devDependencies": {

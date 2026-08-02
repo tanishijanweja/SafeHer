@@ -4,6 +4,8 @@ import { z } from "zod";
 import prisma, { ReportCategory } from "@safe-her/db";
 
 import { analyzeReport, generateEmbedding } from "../services/gemini";
+import { generateGeohash } from "../services/geohash";
+import { refreshRiskScore } from "../services/risk";
 
 const reportSchema = z.object({
   description: z.string().min(1),
@@ -56,6 +58,8 @@ reportsRouter.post("/", async (c) => {
 
   const { description, latitude, longitude } = parsed.data;
 
+  const geohash = generateGeohash(latitude, longitude);
+
   let analysis: Awaited<ReturnType<typeof analyzeReport>>;
   try {
     analysis = await analyzeReport(description);
@@ -92,10 +96,12 @@ reportsRouter.post("/", async (c) => {
           aiSummary: analysis.summary,
           category,
           severity: analysis.severity,
+          geohash,
         },
       });
 
       await prisma.$executeRaw`UPDATE "report" SET "embedding" = ${vectorLiteral}::vector WHERE "id" = ${report.id}`;
+      await refreshRiskScore(geohash);
       return c.json(report);
     }
   } catch (error) {
@@ -113,9 +119,11 @@ reportsRouter.post("/", async (c) => {
       aiSummary: analysis.summary,
       category,
       severity: analysis.severity,
+      geohash,
     },
   });
 
+  await refreshRiskScore(geohash);
   return c.json(report);
 });
 
