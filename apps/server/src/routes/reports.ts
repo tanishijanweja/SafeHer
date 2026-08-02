@@ -13,7 +13,25 @@ const reportSchema = z.object({
 
 const VALID_CATEGORIES = Object.values(ReportCategory);
 
+const DUPLICATE_SIMILARITY_THRESHOLD = 0.92;
+
 const reportsRouter = new Hono();
+
+async function findDuplicate(vectorLiteral: string) {
+  const rows = await prisma.$queryRaw<
+    { id: string; title: string; category: string; similarity: number }[]
+  >`
+    SELECT "id", "title", "category",
+           1 - ("embedding" <=> ${vectorLiteral}::vector) AS similarity
+    FROM "report"
+    WHERE "embedding" IS NOT NULL
+    ORDER BY "embedding" <=> ${vectorLiteral}::vector
+    LIMIT 1
+  `;
+  const top = rows[0];
+  if (top && top.similarity >= DUPLICATE_SIMILARITY_THRESHOLD) return top;
+  return null;
+}
 
 async function getDemoUser() {
   // TODO: Replace with authenticated user after Better Auth integration.
@@ -37,11 +55,52 @@ reportsRouter.post("/", async (c) => {
   }
 
   const { description, latitude, longitude } = parsed.data;
-  const analysis = await analyzeReport(description);
+
+  let analysis: Awaited<ReturnType<typeof analyzeReport>>;
+  try {
+    analysis = await analyzeReport(description);
+  } catch (error) {
+    console.error("Gemini analysis failed, using fallback:", error);
+    analysis = {
+      summary: description,
+      category: ReportCategory.OTHER,
+      severity: 1,
+    };
+  }
 
   const category = VALID_CATEGORIES.includes(analysis.category)
     ? analysis.category
     : ReportCategory.OTHER;
+
+  try {
+    const embedding = await generateEmbedding(analysis.summary);
+    if (embedding.length > 0) {
+      const vectorLiteral = `[${embedding.join(",")}]`;
+      const duplicate = await findDuplicate(vectorLiteral);
+      if (duplicate) {
+        return c.json({ error: "Duplicate report", existing: duplicate }, 409);
+      }
+
+      const user = await getDemoUser();
+      const report = await prisma.report.create({
+        data: {
+          userId: user.id,
+          title: analysis.summary,
+          description,
+          latitude,
+          longitude,
+          aiSummary: analysis.summary,
+          category,
+          severity: analysis.severity,
+        },
+      });
+
+      await prisma.$executeRaw`UPDATE "report" SET "embedding" = ${vectorLiteral}::vector WHERE "id" = ${report.id}`;
+      return c.json(report);
+    }
+  } catch (error) {
+    console.error("Gemini embedding failed, falling back to insert:", error);
+  }
 
   const user = await getDemoUser();
   const report = await prisma.report.create({
@@ -56,10 +115,6 @@ reportsRouter.post("/", async (c) => {
       severity: analysis.severity,
     },
   });
-
-  const embedding = await generateEmbedding(analysis.summary);
-  const vectorLiteral = `[${embedding.join(",")}]`;
-  await prisma.$executeRaw`UPDATE "report" SET "embedding" = ${vectorLiteral}::vector WHERE "id" = ${report.id}`;
 
   return c.json(report);
 });

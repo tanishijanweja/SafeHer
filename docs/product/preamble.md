@@ -110,7 +110,7 @@ For any vehicle — cab, auto, Uber, Ola, or private car:
 
 
 
-
+#### Tanishi
 ## Gemini does two things in this pipeline:
 1. Report analysis (analyzeReport in apps/server/src/services/gemini.ts)
 - Takes the user's description text
@@ -126,4 +126,20 @@ For any vehicle — cab, auto, Uber, Ola, or private car:
 - Returns a 3072-dimension vector (numeric representation of the text's meaning)
 - Stored in Report.embedding (pgvector column)
 Why it matters: the embeddings enable semantic similarity searches later (e.g., "find other reports with similar wording" or the corroboration/heatmap logic). Currently the embedding is generated and stored but not yet queried against.
-▣  Build · DeepSeek V4 Flash Free (New) · 6.1s
+
+When the free-tier quota is exhausted (like now):
+What happens per submission:
+1. analyzeReport() → Gemini returns HTTP 429 (RESOURCE_EXHAUSTED)
+2. Our try/catch catches it → falls back to { summary: <raw description>, category: OTHER, severity: 1 }
+3. Report is still saved to PostgreSQL normally (description, lat/lng, timestamps, geohash)
+4. Embedding call (separate quota) — if it also fails, it's skipped
+5. Response is still 200, no 500, no lost data
+The downsides while rate-limited:
+- No AI summary/category/severity — everything is OTHER / severity 1
+- No embedding stored
+- You get a console error log per attempt
+When it resets:
+- Per-minute limits: recover within ~1 minute
+- Per-day limits (20 requests/day): reset at midnight Pacific time
+- So real analysis just "comes back" automatically the next day
+To avoid hitting it: add billing to the API key (removes the 20/day cap), reduce calls per report, or add caching. For the hackathon demo, the fallback means the app never breaks — it just temporarily loses AI quality.

@@ -4,7 +4,12 @@ import type { ReportCategory } from "@safe-her/db";
 
 import { REPORT_ANALYSIS_PROMPT } from "../prompts";
 
-const GEMINI_MODEL = "gemini-flash-latest";
+const GEMINI_MODELS = [
+  "gemini-flash-latest",
+  "gemini-3.5-flash",
+  "gemini-3-flash-preview",
+  "gemini-flash-lite-latest",
+];
 const EMBEDDING_MODEL = "gemini-embedding-001";
 
 const ai = new GoogleGenAI({
@@ -26,23 +31,34 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 }
 
 export async function analyzeReport(description: string): Promise<ReportAnalysis> {
-  const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: REPORT_ANALYSIS_PROMPT(description),
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: "OBJECT",
-        properties: {
-          summary: { type: "STRING" },
-          category: { type: "STRING" },
-          severity: { type: "INTEGER" },
-        },
-        required: ["summary", "category", "severity"],
+  const config = {
+    responseMimeType: "application/json",
+    responseSchema: {
+      type: "OBJECT",
+      properties: {
+        summary: { type: "STRING" },
+        category: { type: "STRING" },
+        severity: { type: "INTEGER" },
       },
+      required: ["summary", "category", "severity"],
     },
-  });
+  };
 
-  const text = response.text ?? "";
-  return JSON.parse(text) as ReportAnalysis;
+  let lastError: unknown;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: REPORT_ANALYSIS_PROMPT(description),
+        config,
+      });
+      const text = response.text ?? "";
+      return JSON.parse(text) as ReportAnalysis;
+    } catch (error) {
+      lastError = error;
+      console.warn(`Gemini model "${model}" failed, trying next:`, error);
+    }
+  }
+
+  throw lastError;
 }
