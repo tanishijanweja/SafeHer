@@ -99,6 +99,21 @@ model RiskScore {
   @@map("risk_score")
 }
 
+model HistoricalRisk {
+  id         String   @id @default(cuid())
+  district   String
+  geohash    String
+  crimeCount Int      @default(0)
+  score      Float
+  source     String   @default("NCRB")
+  updatedAt  DateTime @updatedAt
+
+  @@index([geohash])
+  @@index([district])
+
+  @@map("historical_risk")
+}
+
 model Trip {
   id             String       @id @default(cuid())
   userId         String

@@ -9,8 +9,40 @@ export async function getReportsByGeohash(geohash: string) {
 
 export type Report = Awaited<ReturnType<typeof getReportsByGeohash>>[number];
 
-export async function getHistoricalScore(_geohash: string): Promise<number> {
-  return 0;
+type CachedRow = { geohash: string; score: number };
+
+let cachedHistorical: CachedRow[] | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+export async function getHistoricalScore(geohash: string): Promise<number> {
+  const now = Date.now();
+
+  if (!cachedHistorical || now - cacheTimestamp > CACHE_TTL_MS) {
+    cachedHistorical = await prisma.historicalRisk.findMany({
+      select: { geohash: true, score: true },
+    });
+    cacheTimestamp = now;
+  }
+
+  const MIN_PREFIX_LEN = 3;
+  let bestScore = 0;
+  let bestPrefixLen = 0;
+
+  for (const row of cachedHistorical) {
+    let prefixLen = 0;
+    const limit = Math.min(geohash.length, row.geohash.length);
+    for (let i = 0; i < limit; i++) {
+      if (geohash[i] === row.geohash[i]) prefixLen++;
+      else break;
+    }
+    if (prefixLen >= MIN_PREFIX_LEN && prefixLen > bestPrefixLen) {
+      bestPrefixLen = prefixLen;
+      bestScore = row.score;
+    }
+  }
+
+  return bestScore;
 }
 
 export function calculateLiveScore(reports: Report[]): number {
