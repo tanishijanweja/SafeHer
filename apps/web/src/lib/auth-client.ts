@@ -1,4 +1,4 @@
-import { env } from "@safe-sphere-ai/env/web";
+import { env } from "@safe-her/env/web";
 import { createAuthClient } from "better-auth/react";
 
 function getServerUrl(url: string) {

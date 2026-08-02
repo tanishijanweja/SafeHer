@@ -1,5 +1,5 @@
-import { createPrismaClient } from "@safe-sphere-ai/db";
-import { env } from "@safe-sphere-ai/env/server";
+import { createPrismaClient } from "@safe-her/db";
+import { env } from "@safe-her/env/server";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 

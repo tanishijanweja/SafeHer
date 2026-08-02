@@ -1,4 +1,4 @@
-# safe-sphere-ai
+# SafeHer
 
 This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines Next.js, Hono, and more.
 
@@ -64,7 +64,7 @@ npx shadcn@latest add accordion dialog popover sheet table -c packages/ui
 Import shared components like this:
 
 ```tsx
-import { Button } from "@safe-sphere-ai/ui/components/button";
+import { Button } from "@safe-her/ui/components/button";
 ```
 
 ### Add app-specific blocks
@@ -74,7 +74,7 @@ If you want to add app-specific blocks instead of shared primitives, run the sha
 ## Project Structure
 
 ```
-safe-sphere-ai/
+safe-her/
 ├── apps/
 │   ├── web/         # Frontend application (Next.js)
 │   └── server/      # Backend API (Hono)

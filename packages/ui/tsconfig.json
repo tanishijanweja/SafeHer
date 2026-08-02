@@ -1,11 +1,11 @@
 {
-  "extends": "@safe-sphere-ai/config/tsconfig.base.json",
+  "extends": "@safe-her/config/tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": [],
     "paths": {
-      "@safe-sphere-ai/ui/*": ["./src/*"]
+      "@safe-her/ui/*": ["./src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],

@@ -1,6 +1,6 @@
-import { Button } from "@safe-sphere-ai/ui/components/button";
-import { Input } from "@safe-sphere-ai/ui/components/input";
-import { Label } from "@safe-sphere-ai/ui/components/label";
+import { Button } from "@safe-her/ui/components/button";
+import { Input } from "@safe-her/ui/components/input";
+import { Label } from "@safe-her/ui/components/label";
 import { useForm } from "@tanstack/react-form";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";

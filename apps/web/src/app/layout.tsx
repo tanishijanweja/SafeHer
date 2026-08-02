@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "safe-sphere-ai",
-  description: "safe-sphere-ai",
+  title: "safe-her",
+  description: "safe-her",
 };
 
 export default function RootLayout({

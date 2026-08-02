@@ -1,5 +1,5 @@
 import { PrismaPg } from "@prisma/adapter-pg";
-import { env } from "@safe-sphere-ai/env/server";
+import { env } from "@safe-her/env/server";
 
 import { PrismaClient } from "../prisma/generated/client";
 

@@ -1,4 +1,4 @@
-import { Button } from "@safe-sphere-ai/ui/components/button";
+import { Button } from "@safe-her/ui/components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,8 +7,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@safe-sphere-ai/ui/components/dropdown-menu";
-import { Skeleton } from "@safe-sphere-ai/ui/components/skeleton";
+} from "@safe-her/ui/components/dropdown-menu";
+import { Skeleton } from "@safe-her/ui/components/skeleton";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 

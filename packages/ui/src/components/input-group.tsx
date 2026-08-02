@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@safe-sphere-ai/ui/components/button";
-import { Input } from "@safe-sphere-ai/ui/components/input";
-import { Textarea } from "@safe-sphere-ai/ui/components/textarea";
-import { cn } from "@safe-sphere-ai/ui/lib/utils";
+import { Button } from "@safe-her/ui/components/button";
+import { Input } from "@safe-her/ui/components/input";
+import { Textarea } from "@safe-her/ui/components/textarea";
+import { cn } from "@safe-her/ui/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 

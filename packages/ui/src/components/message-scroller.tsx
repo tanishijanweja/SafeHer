@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@safe-sphere-ai/ui/components/button";
-import { cn } from "@safe-sphere-ai/ui/lib/utils";
+import { Button } from "@safe-her/ui/components/button";
+import { cn } from "@safe-her/ui/lib/utils";
 import {
   MessageScroller as MessageScrollerPrimitive,
   useMessageScroller,

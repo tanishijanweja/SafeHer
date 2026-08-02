@@ -1,5 +1,5 @@
-import { auth } from "@safe-sphere-ai/auth";
-import { env } from "@safe-sphere-ai/env/server";
+import { auth } from "@safe-her/auth";
+import { env } from "@safe-her/env/server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
