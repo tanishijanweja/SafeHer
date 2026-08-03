@@ -20,7 +20,13 @@
     "db:stop": "docker compose stop",
     "db:down": "docker compose down",
     "db:import": "bun run scripts/import-historical.ts",
-    "db:fetch": "bun run src/fetch-crime-data.ts"
+    "db:fetch": "bun run src/fetch-crime-data.ts",
+    "db:fetch-news": "bun run src/fetch-gdelt.ts",
+    "db:fetch-news-gkg": "bun run src/fetch-gdelt-gkg.ts",
+    "db:fetch-news-incremental": "GKG_MODE=incremental bun run src/fetch-gdelt-gkg.ts",
+    "db:backfill-news": "GKG_MODE=backfill GKG_BACKFILL_DAYS=180 bun run src/fetch-gdelt-gkg.ts",
+    "db:backfill-news-year": "GKG_MODE=backfill GKG_BACKFILL_DAYS=365 bun run src/fetch-gdelt-gkg.ts",
+    "db:cleanup-news": "bun run src/cleanup-news.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",

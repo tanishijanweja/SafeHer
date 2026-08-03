@@ -114,6 +114,51 @@ model HistoricalRisk {
   @@map("historical_risk")
 }
 
+model NewsIncident {
+  id             String   @id @default(cuid())
+  title          String
+  url            String   @unique
+  sourceDomain   String
+  latitude       Float
+  longitude      Float
+  geohash        String
+  publishedAt    DateTime
+  createdAt      DateTime @default(now())
+  category       String?
+  severity       Float    @default(3)
+  confidence     Float    @default(0.5)
+  isWomenSafety  Boolean  @default(false)
+  localityName   String?
+  affectsHeatmap Boolean  @default(true)
+  dedupeKey      String?
+
+  @@index([geohash])
+  @@index([publishedAt])
+  @@index([dedupeKey])
+  @@index([affectsHeatmap, publishedAt])
+  @@index([category])
+  @@index([isWomenSafety])
+
+  @@map("news_incident")
+}
+
+/// Tracks which GDELT GKG 15-min archives have been processed (resume + incremental)
+model GkgIngestFile {
+  id          String   @id @default(cuid())
+  fileId      String   @unique
+  status      String
+  parsed      Int      @default(0)
+  candidates  Int      @default(0)
+  inserted    Int      @default(0)
+  error       String?
+  processedAt DateTime @default(now())
+
+  @@index([processedAt])
+  @@index([status])
+
+  @@map("gkg_ingest_file")
+}
+
 model Trip {
   id             String       @id @default(cuid())
   userId         String
