@@ -15,13 +15,20 @@ import {
   useMapEvents,
 } from "react-leaflet";
 
+import { cn } from "@safe-her/ui/lib/utils";
+
 import "leaflet/dist/leaflet.css";
 
 const pinIcon = divIcon({
   className: "",
-  html: '<svg width="24" height="24" viewBox="0 0 24 24" fill="#ef4444" stroke="#ffffff" stroke-width="2"><path d="M12 21s-7-5.5-7-11a7 7 0 1 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5" fill="#ffffff" stroke="none"/></svg>',
-  iconSize: [24, 24],
-  iconAnchor: [12, 24],
+  html: `<div style="filter:drop-shadow(0 2px 4px rgba(225,29,72,.35))">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="#e11d48" stroke="#ffffff" stroke-width="1.75">
+      <path d="M12 21s-7-5.5-7-11a7 7 0 1 1 14 0c0 5.5-7 11-7 11z"/>
+      <circle cx="12" cy="10" r="2.5" fill="#ffffff" stroke="none"/>
+    </svg>
+  </div>`,
+  iconSize: [28, 28],
+  iconAnchor: [14, 28],
 });
 
 type MapPoint = {
@@ -37,7 +44,6 @@ export type MapPolygon = {
   id: string;
   positions: [number, number][];
   color: string;
-  /** Hover-only tooltip content */
   hover?: React.ReactNode;
 };
 
@@ -48,10 +54,11 @@ type SafetyMapProps = {
   height?: number | string;
   className?: string;
   zoom?: number;
-  /** Dark Carto tiles match the home preview; default is OSM. */
   darkTiles?: boolean;
   interactive?: boolean;
   zoomControl?: boolean;
+  /** Floating glass risk legend over the map */
+  showLegend?: boolean;
   onMapClick?: (lat: number, lng: number) => void;
 };
 
@@ -153,20 +160,22 @@ function PointMarker({
     [id, onActivate],
   );
 
-  const eventHandlers = useMemo(() => {
-    return {
+  const eventHandlers = useMemo(
+    () => ({
       click: (e: LeafletMouseEvent) => openDetails(e),
-    };
-  }, [openDetails]);
+    }),
+    [openDetails],
+  );
 
+  const richHover = typeof point.hover !== "string" && point.hover != null;
   const hoverTip =
     point.hover && !isCoarse ? (
       <Tooltip
         direction="top"
-        offset={[0, -8]}
+        offset={[0, richHover ? -10 : -8]}
         opacity={1}
         sticky={false}
-        className="safeher-map-hover"
+        className={richHover ? "safeher-area-tooltip" : "safeher-map-hover"}
         permanent={false}
       >
         {point.hover}
@@ -200,12 +209,13 @@ function PointMarker({
       <CircleMarker
         ref={setRef as never}
         center={[point.lat, point.lng]}
-        radius={isActive ? 14 : 11}
+        radius={isActive ? 11 : 8}
         pathOptions={{
-          color: point.color,
+          color: "#ffffff",
           fillColor: point.color,
-          fillOpacity: isActive ? 0.9 : 0.75,
-          weight: isActive ? 3 : 2,
+          fillOpacity: isActive ? 1 : 0.92,
+          weight: isActive ? 3 : 2.5,
+          opacity: 1,
         }}
         eventHandlers={eventHandlers}
       >
@@ -255,9 +265,11 @@ function AreaPolygon({
       pathOptions={{
         color: region.color,
         fillColor: region.color,
-        fillOpacity: isHovered ? 0.55 : 0.38,
-        weight: isHovered ? 2.5 : 1.5,
-        opacity: 0.9,
+        fillOpacity: isHovered ? 0.48 : 0.32,
+        weight: isHovered ? 2.5 : 1.25,
+        opacity: isHovered ? 0.95 : 0.72,
+        lineJoin: "round",
+        lineCap: "round",
       }}
       eventHandlers={eventHandlers}
     >
@@ -276,6 +288,37 @@ function AreaPolygon({
   );
 }
 
+function FloatingLegend() {
+  const items = [
+    { color: "#059669", label: "Low" },
+    { color: "#d97706", label: "Medium" },
+    { color: "#e11d48", label: "High" },
+  ];
+  return (
+    <div className="pointer-events-none absolute bottom-3 left-3 z-[1000]">
+      <div className="rounded-xl bg-white/92 px-3 py-2.5 shadow-lg shadow-black/10 ring-1 ring-black/5 backdrop-blur-md">
+        <div className="mb-1.5 text-[9px] font-semibold tracking-[0.14em] text-zinc-500 uppercase">
+          Risk
+        </div>
+        <div className="flex items-center gap-3">
+          {items.map((item) => (
+            <span
+              key={item.label}
+              className="inline-flex items-center gap-1.5 text-[11px] font-medium text-zinc-700"
+            >
+              <span
+                className="size-2.5 rounded-full shadow-sm ring-2 ring-white"
+                style={{ backgroundColor: item.color }}
+              />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SafetyMap({
   center,
   points = [],
@@ -286,6 +329,7 @@ export default function SafetyMap({
   darkTiles = false,
   interactive = true,
   zoomControl = true,
+  showLegend = false,
   onMapClick,
 }: SafetyMapProps) {
   const isCoarse = useIsCoarsePointer();
@@ -310,75 +354,126 @@ export default function SafetyMap({
 
   const tileUrl = darkTiles
     ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+    : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
 
-  const attribution = darkTiles
-    ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-    : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  const attribution =
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>';
 
   return (
-    <div className={className} style={{ height, borderRadius: className ? undefined : 8, overflow: "hidden" }}>
+    <div
+      className={cn("relative isolate overflow-hidden bg-zinc-100", className)}
+      style={{ height, borderRadius: className ? undefined : 12 }}
+    >
       <style>{`
         .safeher-map-hover {
-          background: #111827 !important;
+          background: rgba(24, 24, 27, 0.92) !important;
           color: #fff !important;
           border: none !important;
-          border-radius: 8px !important;
-          box-shadow: 0 6px 16px rgba(0,0,0,0.2) !important;
-          padding: 6px 10px !important;
+          border-radius: 10px !important;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.22) !important;
+          padding: 7px 11px !important;
           font-size: 12px !important;
           font-weight: 600 !important;
           white-space: nowrap !important;
           line-height: 1.3 !important;
+          backdrop-filter: blur(8px);
         }
         .safeher-map-hover::before {
-          border-top-color: #111827 !important;
+          border-top-color: rgba(24, 24, 27, 0.92) !important;
         }
         .leaflet-tooltip-top.safeher-map-hover::before {
-          border-top-color: #111827 !important;
+          border-top-color: rgba(24, 24, 27, 0.92) !important;
         }
         .safeher-area-tooltip {
-          background: #ffffff !important;
-          color: #111827 !important;
-          border: 1px solid #e5e7eb !important;
-          border-radius: 10px !important;
-          box-shadow: 0 10px 28px rgba(0,0,0,0.16) !important;
-          padding: 10px 12px !important;
+          background: rgba(255,255,255,0.97) !important;
+          color: #18181b !important;
+          border: none !important;
+          border-radius: 14px !important;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.04) !important;
+          padding: 12px 14px !important;
           font-size: 12.5px !important;
           font-weight: 400 !important;
           line-height: 1.4 !important;
           white-space: normal !important;
-          max-width: 240px !important;
+          max-width: 260px !important;
+          backdrop-filter: blur(12px);
         }
         .safeher-area-tooltip::before {
-          border-top-color: #ffffff !important;
-        }
-        .leaflet-tooltip-top.safeher-area-tooltip::before {
-          border-top-color: #ffffff !important;
+          display: none !important;
         }
         .safeher-map-popup .leaflet-popup-content-wrapper {
-          background: #fff;
-          border-radius: 12px;
-          box-shadow: 0 10px 28px rgba(0,0,0,0.16);
-          border: 1px solid #e5e7eb;
+          background: rgba(255,255,255,0.98);
+          border-radius: 14px;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.04);
+          border: none;
           padding: 0;
         }
         .safeher-map-popup .leaflet-popup-content {
-          margin: 12px 14px;
+          margin: 14px 16px;
         }
         .safeher-map-popup .leaflet-popup-tip {
           background: #fff;
-          border: 1px solid #e5e7eb;
           box-shadow: none;
         }
         .safeher-map-popup a.leaflet-popup-close-button {
-          top: 6px;
-          right: 8px;
+          top: 8px;
+          right: 10px;
           font-size: 18px;
-          color: #6b7280;
+          color: #a1a1aa;
+          width: 24px;
+          height: 24px;
+          padding: 0;
+          line-height: 22px;
         }
         .safeher-map-popup a.leaflet-popup-close-button:hover {
-          color: #111827;
+          color: #18181b;
+        }
+        .leaflet-container {
+          font-family: inherit;
+          background: #f4f4f5;
+        }
+        .leaflet-control-zoom {
+          border: none !important;
+          border-radius: 12px !important;
+          overflow: hidden;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04) !important;
+          margin: 12px 12px 0 0 !important;
+        }
+        .leaflet-control-zoom a {
+          width: 34px !important;
+          height: 34px !important;
+          line-height: 34px !important;
+          font-size: 16px !important;
+          color: #3f3f46 !important;
+          background: rgba(255,255,255,0.95) !important;
+          border: none !important;
+          border-bottom: 1px solid rgba(0,0,0,0.06) !important;
+        }
+        .leaflet-control-zoom a:last-child {
+          border-bottom: none !important;
+        }
+        .leaflet-control-zoom a:hover {
+          background: #fafafa !important;
+          color: #18181b !important;
+        }
+        .leaflet-control-attribution {
+          background: rgba(255,255,255,0.72) !important;
+          backdrop-filter: blur(6px);
+          color: #a1a1aa !important;
+          font-size: 9px !important;
+          padding: 2px 6px !important;
+          border-radius: 6px 0 0 0 !important;
+          margin: 0 !important;
+          max-width: 55%;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .leaflet-control-attribution a {
+          color: #71717a !important;
+        }
+        .leaflet-interactive {
+          outline: none;
         }
       `}</style>
       <MapContainer
@@ -424,6 +519,7 @@ export default function SafetyMap({
           );
         })}
       </MapContainer>
+      {showLegend && (polygons.length > 0 || points.length > 0) ? <FloatingLegend /> : null}
     </div>
   );
 }

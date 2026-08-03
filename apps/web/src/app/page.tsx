@@ -16,7 +16,6 @@ import {
 import { cn } from "@safe-her/ui/lib/utils";
 
 import {
-  type HeatmapCell,
   type Report,
   fetchHeatmap,
   fetchReports,
@@ -24,17 +23,23 @@ import {
   relativeTimeShort,
   severityLabel,
 } from "@/lib/api";
+import { AreaHoverTooltip } from "@/components/map-ui";
+import {
+  type HeatmapCell,
+  groupCellsIntoAreas,
+  riskColor,
+} from "@/lib/heatmap-areas";
 
 const SafetyMap = dynamic(() => import("@/components/safety-map"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full min-h-[280px] items-center justify-center bg-zinc-900 text-xs text-zinc-400">
+    <div className="flex h-full min-h-[280px] items-center justify-center bg-zinc-100 text-xs text-muted-foreground">
       Loading map...
     </div>
   ),
 });
 
-const MAP_CENTER = { lat: 28.635, lng: 77.22 };
+const MAP_CENTER = { lat: 28.61, lng: 77.2 };
 
 // TODO: remove once reports + heatmap always return data in empty environments
 const DEMO_REPORTS: Report[] = [
@@ -94,16 +99,6 @@ const DEMO_REPORTS: Report[] = [
   },
 ];
 
-const DEMO_HOTSPOTS: { lat: number; lng: number; risk: "High" | "Medium" | "Low" }[] = [
-  { lat: 28.651, lng: 77.19, risk: "High" },
-  { lat: 28.642, lng: 77.215, risk: "Medium" },
-  { lat: 28.655, lng: 77.23, risk: "High" },
-  { lat: 28.63, lng: 77.22, risk: "High" },
-  { lat: 28.62, lng: 77.25, risk: "Medium" },
-  { lat: 28.61, lng: 77.21, risk: "Medium" },
-  { lat: 28.635, lng: 77.205, risk: "High" },
-];
-
 function SeverityDots({ severity }: { severity: number }) {
   const label = severityLabel(severity);
   const filled = label === "Mild" ? 2 : label === "Moderate" ? 3 : 4;
@@ -154,12 +149,6 @@ function ConfidenceBadge({ level }: { level: Report["confidenceLevel"] }) {
   );
 }
 
-function hotspotColor(level: HeatmapCell["riskLevel"] | string): string {
-  if (level === "High") return "#f472b6";
-  if (level === "Medium") return "#f9a8d4";
-  return "#c4b5fd";
-}
-
 export default function Home() {
   const [reports, setReports] = useState<Report[]>([]);
   const [heatmap, setHeatmap] = useState<HeatmapCell[]>([]);
@@ -202,42 +191,21 @@ export default function Home() {
       ? 0
       : displayReports.reduce((s, r) => s + (r.severity || 0), 0) / totalReports;
 
-  const hotspots = useMemo(() => {
-    if (heatmap.length > 0) {
-      return heatmap
-        .filter((c) => c.riskLevel !== "Low")
-        .slice(0, 40)
-        .map((c) => ({
-          id: c.id,
-          lat: c.latitude,
-          lng: c.longitude,
-          color: hotspotColor(c.riskLevel),
-          hover: (
-            <span>
-              {c.areaName} · {c.riskLevel}
-            </span>
-          ),
-        }));
-    }
-    if (usingDemo) {
-      return DEMO_HOTSPOTS.map((h, i) => ({
-        id: `demo-h-${i}`,
-        lat: h.lat,
-        lng: h.lng,
-        color: hotspotColor(h.risk),
-      }));
-    }
-    return displayReports.slice(0, 20).map((r) => ({
-      id: r.id,
-      lat: r.latitude,
-      lng: r.longitude,
-      color: hotspotColor(r.severity >= 4 ? "High" : r.severity >= 3 ? "Medium" : "Low"),
-    }));
-  }, [heatmap, usingDemo, displayReports]);
+  const areas = useMemo(() => groupCellsIntoAreas(heatmap), [heatmap]);
 
-  const liveHotspotCount =
-    heatmap.filter((c) => c.riskLevel !== "Low").length ||
-    (usingDemo ? DEMO_HOTSPOTS.length : hotspots.length);
+  const points = useMemo(
+    () =>
+      areas.map((area) => ({
+        id: area.id,
+        lat: area.center.lat,
+        lng: area.center.lng,
+        color: riskColor(area.riskLevel),
+        hover: <AreaHoverTooltip area={area} />,
+      })),
+    [areas],
+  );
+
+  const liveHotspotCount = areas.filter((a) => a.riskLevel !== "Low").length;
 
   return (
     <main className="relative min-h-0 overflow-y-auto">
@@ -304,28 +272,33 @@ export default function Home() {
 
           <div className="relative">
             <div className="overflow-hidden rounded-2xl bg-card shadow-xl shadow-pink-200/40 ring-1 ring-border/70 dark:shadow-none">
-              <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <span className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <div className="flex items-center justify-between gap-3 border-b border-border/50 bg-gradient-to-r from-primary/[0.04] to-transparent px-4 py-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex size-8 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/10">
                     <MapPin className="size-3.5" />
                   </span>
-                  Delhi live risk map
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">Delhi live risk map</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      Hover pins · community + news risk
+                    </div>
+                  </div>
                 </div>
                 <Link
                   href="/heatmap"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-primary transition hover:text-primary/80"
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/15"
                 >
-                  Open full map
+                  Full map
                   <ArrowRight className="size-3.5" />
                 </Link>
               </div>
               <SafetyMap
                 center={MAP_CENTER}
-                height={320}
-                zoom={12}
-                darkTiles
+                height={340}
+                zoom={11}
                 zoomControl={false}
-                points={hotspots}
+                showLegend
+                points={points}
                 className="rounded-none"
               />
             </div>

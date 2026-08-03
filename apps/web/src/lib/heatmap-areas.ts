@@ -279,15 +279,15 @@ export function groupCellsIntoAreas(cells: HeatmapCell[]): AreaRegion[] {
 }
 
 export function riskColor(level: RiskLevel): string {
-  if (level === "High") return "#ef4444";
-  if (level === "Medium") return "#eab308";
-  return "#22c55e";
+  if (level === "High") return "#e11d48";
+  if (level === "Medium") return "#d97706";
+  return "#059669";
 }
 
 export function riskEmoji(level: RiskLevel): string {
-  if (level === "High") return "🔴";
-  if (level === "Medium") return "🟡";
-  return "🟢";
+  if (level === "High") return "●";
+  if (level === "Medium") return "●";
+  return "●";
 }
 
 export function relativeTime(iso: string): string {
