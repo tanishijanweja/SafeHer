@@ -45,7 +45,13 @@ type SafetyMapProps = {
   center: { lat: number; lng: number };
   points?: MapPoint[];
   polygons?: MapPolygon[];
-  height?: number;
+  height?: number | string;
+  className?: string;
+  zoom?: number;
+  /** Dark Carto tiles match the home preview; default is OSM. */
+  darkTiles?: boolean;
+  interactive?: boolean;
+  zoomControl?: boolean;
   onMapClick?: (lat: number, lng: number) => void;
 };
 
@@ -275,6 +281,11 @@ export default function SafetyMap({
   points = [],
   polygons = [],
   height = 320,
+  className,
+  zoom = 12,
+  darkTiles = false,
+  interactive = true,
+  zoomControl = true,
   onMapClick,
 }: SafetyMapProps) {
   const isCoarse = useIsCoarsePointer();
@@ -297,8 +308,16 @@ export default function SafetyMap({
   const onPolyHover = useCallback((id: string) => setHoveredPoly(id), []);
   const onPolyLeave = useCallback(() => setHoveredPoly(null), []);
 
+  const tileUrl = darkTiles
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+
+  const attribution = darkTiles
+    ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
+    : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
   return (
-    <div style={{ height, borderRadius: 8, overflow: "hidden" }}>
+    <div className={className} style={{ height, borderRadius: className ? undefined : 8, overflow: "hidden" }}>
       <style>{`
         .safeher-map-hover {
           background: #111827 !important;
@@ -364,14 +383,17 @@ export default function SafetyMap({
       `}</style>
       <MapContainer
         center={[center.lat, center.lng]}
-        zoom={12}
-        scrollWheelZoom
+        zoom={zoom}
+        scrollWheelZoom={interactive}
+        dragging={interactive}
+        doubleClickZoom={interactive}
+        touchZoom={interactive}
+        boxZoom={interactive}
+        keyboard={interactive}
+        zoomControl={zoomControl}
         style={{ width: "100%", height: "100%" }}
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <TileLayer attribution={attribution} url={tileUrl} />
         <MapChrome onMapClick={onMapClick} onBackgroundClick={deactivate} />
         <ActivePopupOpener activeId={activeId} markerRefs={markerRefs} />
 

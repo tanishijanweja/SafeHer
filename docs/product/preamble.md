@@ -5,9 +5,9 @@
 
 ## The Idea
 
-SafeHer is an AI-powered system that identifies unsafe locations in real time by fusing public safety data with live community reports — and then acts on that intelligence to actively protect a woman during her actual journey. It doesn't just show where danger is. It watches, explains, and responds.
+SafeHer is an AI-powered platform that identifies unsafe locations by combining historical crime data, verified live news intelligence, and community reports to generate dynamic street-level safety insights. AI automatically analyzes incidents, classifies risk, and powers an explainable safety heatmap for users.
 
-> "Every safety app tells you where danger is. Ours watches your journey and acts on it in real time."
+> "Safety isn't just about where crime happened yesterday—it's about understanding what's happening around you today."
 
 ---
 
@@ -43,14 +43,13 @@ Two clearly separated data layers (user-toggleable):
 **Combined formula:**
 ```
 risk_score = 0.4 × historical_baseline 
-           + 0.4 × recent_weighted_reports 
-           + 0.2 × time_of_day_multiplier
+           + 0.35 × recent_weighted_reports 
+           + 0.25 × time_of_day_multiplier
 ```
 
 **Data Sources:**
 - data.gov.in — district-wise IPC crime data (NCRB, crimes against women)
-- Delhi Police station jurisdiction boundaries (public, geocoded)
-- Manually compiled, source-cited incidents from real news archives (~40–50 entries)
+- Historical NCRB crime data, GDELT live news pipeline (AI-filtered and classified), Community reports, AI-generated incident summaries and embeddings
 - Live reports submitted during build and demo
 
 **Data Honesty:** Public crime data is district/station-level, not pin-precise. Precision comes from fusing this historical baseline with live, source-cited, hyperlocal community reports — a more honest and more useful approach than implying false pin-level government data.
@@ -59,7 +58,7 @@ risk_score = 0.4 × historical_baseline
 
 ## Act 2 — Acting on the Intelligence
 
-### Feature 3: Smart SOS
+### Feature 3: Smart SOS (future)
 
 One tap:
 - Share live location
@@ -67,7 +66,7 @@ One tap:
 - Notify trusted emergency contacts (email + in-app real-time push)
 - Show nearby police stations and hospitals
 
-### Feature 4: Live Trip Monitoring (Signature Feature)
+### Feature 4: Live Trip Monitoring (future)
 
 For any vehicle — cab, auto, Uber, Ola, or private car:
 - User shares trip details and planned route
@@ -78,7 +77,7 @@ For any vehicle — cab, auto, Uber, Ola, or private car:
 
 **Technical note:** Uber/Ola do not expose real-time trip location via public API. SafeHer tracks from the rider's own device instead — this makes it work for any vehicle, not just app-based cabs.
 
-### Feature 5: Manual Emergency Audio Recording
+### Feature 5: Manual Emergency Audio Recording (future)
 
 - User-triggered only (button press), never automatic or covert
 - Records the user's own environment (legal under India's one-party consent standard)
@@ -91,26 +90,24 @@ For any vehicle — cab, auto, Uber, Ola, or private car:
 
 | Problem | Resolution |
 |---|---|
-| No street-level crime data exists | Two-layer system: historical (district/station-level) + live community layer |
-| Cold-start empty map | Seeded with source-cited real incidents from news archives |
-| Fake/malicious reports | Corroboration-based confidence upgrading (3+ independent reports) |
-| No Uber/Ola data access | Tracks from rider's own phone GPS — broader use case |
-| Battery API unsupported on Safari/Firefox | Feature-detected, gracefully omitted |
-| Audio recording legality | One-party consent, manual trigger, visible indicator |
+| Government crime data is coarse | Combined with AI-filtered live news + community reports |
+| Fake reports | AI spam detection + embeddings |
+| Duplicate news | AI classification + deduplication |
+| Irrelevant news | Multi-stage filtering + Gemini classification |
+| Explainability | Every hotspot shows contributing factors and recent incidents |
 
 ---
 
 ## Roadmap (Future Scope)
 
-- Deeper community verification/trust-scoring layer
-- Partnership with Delhi Police / Himmat Plus / 112 India
-- Native mobile app with proper background GPS
-- Expansion beyond Delhi
-- IP: integrated system of live sensor data + geospatial anomaly detection (not algorithm alone)
+- Smart SOS
+- Trip Monitoring
+- Voice Assistant
+- Audio Recording
+- Trusted Contacts
+- Background GPS
 
 
-
-#### Tanishi
 ## Gemini does two things in this pipeline:
 1. Report analysis (analyzeReport in apps/server/src/services/gemini.ts)
 - Takes the user's description text
