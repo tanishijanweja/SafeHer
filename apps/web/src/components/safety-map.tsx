@@ -7,6 +7,7 @@ import {
   CircleMarker,
   MapContainer,
   Marker,
+  Polygon,
   Popup,
   TileLayer,
   Tooltip,
@@ -28,15 +29,22 @@ type MapPoint = {
   lat: number;
   lng: number;
   color?: string;
-  /** Full details — shown on click */
   popup?: React.ReactNode;
-  /** Compact label — shown on hover (desktop) */
+  hover?: React.ReactNode;
+};
+
+export type MapPolygon = {
+  id: string;
+  positions: [number, number][];
+  color: string;
+  /** Hover-only tooltip content */
   hover?: React.ReactNode;
 };
 
 type SafetyMapProps = {
   center: { lat: number; lng: number };
-  points: MapPoint[];
+  points?: MapPoint[];
+  polygons?: MapPolygon[];
   height?: number;
   onMapClick?: (lat: number, lng: number) => void;
 };
@@ -145,7 +153,6 @@ function PointMarker({
     };
   }, [openDetails]);
 
-  // Short hover chip — only on fine pointers (desktop)
   const hoverTip =
     point.hover && !isCoarse ? (
       <Tooltip
@@ -154,7 +161,6 @@ function PointMarker({
         opacity={1}
         sticky={false}
         className="safeher-map-hover"
-        // Hide while full popup is open for this marker
         permanent={false}
       >
         {point.hover}
@@ -197,7 +203,6 @@ function PointMarker({
         }}
         eventHandlers={eventHandlers}
       >
-        {/* Don't show hover tip while details popup is open */}
         {!isActive ? hoverTip : null}
         {detailPopup}
       </CircleMarker>
@@ -217,14 +222,64 @@ function PointMarker({
   );
 }
 
+function AreaPolygon({
+  region,
+  isCoarse,
+  isHovered,
+  onHover,
+  onLeave,
+}: {
+  region: MapPolygon;
+  isCoarse: boolean;
+  isHovered: boolean;
+  onHover: (id: string) => void;
+  onLeave: () => void;
+}) {
+  const eventHandlers = useMemo(
+    () => ({
+      mouseover: () => onHover(region.id),
+      mouseout: () => onLeave(),
+    }),
+    [region.id, onHover, onLeave],
+  );
+
+  return (
+    <Polygon
+      positions={region.positions}
+      pathOptions={{
+        color: region.color,
+        fillColor: region.color,
+        fillOpacity: isHovered ? 0.55 : 0.38,
+        weight: isHovered ? 2.5 : 1.5,
+        opacity: 0.9,
+      }}
+      eventHandlers={eventHandlers}
+    >
+      {region.hover && !isCoarse ? (
+        <Tooltip
+          sticky
+          direction="top"
+          opacity={1}
+          className="safeher-area-tooltip"
+          permanent={false}
+        >
+          {region.hover}
+        </Tooltip>
+      ) : null}
+    </Polygon>
+  );
+}
+
 export default function SafetyMap({
   center,
-  points,
+  points = [],
+  polygons = [],
   height = 320,
   onMapClick,
 }: SafetyMapProps) {
   const isCoarse = useIsCoarsePointer();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [hoveredPoly, setHoveredPoly] = useState<string | null>(null);
   const markerRefs = useRef<Map<string, { openPopup: () => void; closePopup: () => void }>>(
     new Map(),
   );
@@ -239,6 +294,8 @@ export default function SafetyMap({
 
   const activate = useCallback((id: string) => setActiveId(id), []);
   const deactivate = useCallback(() => setActiveId(null), []);
+  const onPolyHover = useCallback((id: string) => setHoveredPoly(id), []);
+  const onPolyLeave = useCallback(() => setHoveredPoly(null), []);
 
   return (
     <div style={{ height, borderRadius: 8, overflow: "hidden" }}>
@@ -260,6 +317,25 @@ export default function SafetyMap({
         }
         .leaflet-tooltip-top.safeher-map-hover::before {
           border-top-color: #111827 !important;
+        }
+        .safeher-area-tooltip {
+          background: #ffffff !important;
+          color: #111827 !important;
+          border: 1px solid #e5e7eb !important;
+          border-radius: 10px !important;
+          box-shadow: 0 10px 28px rgba(0,0,0,0.16) !important;
+          padding: 10px 12px !important;
+          font-size: 12.5px !important;
+          font-weight: 400 !important;
+          line-height: 1.4 !important;
+          white-space: normal !important;
+          max-width: 240px !important;
+        }
+        .safeher-area-tooltip::before {
+          border-top-color: #ffffff !important;
+        }
+        .leaflet-tooltip-top.safeher-area-tooltip::before {
+          border-top-color: #ffffff !important;
         }
         .safeher-map-popup .leaflet-popup-content-wrapper {
           background: #fff;
@@ -298,6 +374,18 @@ export default function SafetyMap({
         />
         <MapChrome onMapClick={onMapClick} onBackgroundClick={deactivate} />
         <ActivePopupOpener activeId={activeId} markerRefs={markerRefs} />
+
+        {polygons.map((poly) => (
+          <AreaPolygon
+            key={poly.id}
+            region={poly}
+            isCoarse={isCoarse}
+            isHovered={hoveredPoly === poly.id}
+            onHover={onPolyHover}
+            onLeave={onPolyLeave}
+          />
+        ))}
+
         {points.map((point, i) => {
           const id = point.id ?? `${point.lat.toFixed(5)}:${point.lng.toFixed(5)}:${i}`;
           return (

@@ -4,9 +4,12 @@ import path from "node:path";
 import dotenv from "dotenv";
 import ngeohash from "ngeohash";
 
+import { DELHI_CRIME_DATA } from "../data/delhi-crime-data";
+
 dotenv.config({ path: path.join(import.meta.dir, "../../../apps/server/.env") });
 
 const { default: prisma } = await import("../src/index");
+const { recomputeRiskForGeohashes } = await import("../src/recompute-risk");
 
 const CSV_FILE = path.join(import.meta.dir, "../data/ncrb-crimes.csv");
 const GEOHASH_PRECISION = 6;
@@ -72,23 +75,66 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function main() {
+async function importDelhiCrimeData(
+  seen: Set<string>,
+  touched: Set<string>,
+): Promise<{ inserted: number; skipped: number }> {
+  const maxCount = Math.max(...DELHI_CRIME_DATA.map((d) => d.historicalIncidentCount));
+  let inserted = 0;
+  let skipped = 0;
+
+  console.log(`\n--- Layer A: delhi-crime-data.ts (${DELHI_CRIME_DATA.length} districts) ---`);
+
+  for (const d of DELHI_CRIME_DATA) {
+    const geohash = generateGeohash(d.latitude, d.longitude);
+
+    if (seen.has(geohash)) {
+      console.log(`  ${d.name}: geohash ${geohash} exists, skipping`);
+      skipped++;
+      continue;
+    }
+
+    seen.add(geohash);
+    const score = Number((d.historicalIncidentCount / maxCount).toFixed(4));
+
+    await prisma.historicalRisk.create({
+      data: {
+        district: d.name,
+        geohash,
+        crimeCount: d.historicalIncidentCount,
+        score,
+        source: "NCRB-2022",
+      },
+    });
+
+    touched.add(geohash);
+    inserted++;
+    console.log(
+      `  ${d.name}: inserted (${d.latitude},${d.longitude} -> ${geohash}, score=${score})`,
+    );
+  }
+
+  return { inserted, skipped };
+}
+
+async function importNcrbCsv(
+  seen: Set<string>,
+  touched: Set<string>,
+): Promise<{ inserted: number; skipped: number; geocodeFailed: number }> {
   const content = readFileSync(CSV_FILE, "utf-8");
   const rows = parseCsv(content);
 
   if (rows.length === 0) {
-    console.error(`No valid rows found in ${CSV_FILE}`);
-    process.exit(1);
+    console.warn(`No valid rows in ${CSV_FILE}, skipping CSV import`);
+    return { inserted: 0, skipped: 0, geocodeFailed: 0 };
   }
 
   const maxCrimeCount = Math.max(...rows.map((r) => r.crimeCount));
-
-  const existing = await prisma.historicalRisk.findMany({ select: { geohash: true } });
-  const seen = new Set(existing.map((r) => r.geohash));
-
   let inserted = 0;
   let skipped = 0;
   let geocodeFailed = 0;
+
+  console.log(`\n--- Layer A: ncrb-crimes.csv (${rows.length} districts) ---`);
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]!;
@@ -125,6 +171,7 @@ async function main() {
       },
     });
 
+    touched.add(geohash);
     console.log(`  -> inserted (${coords.lat},${coords.lng} -> geohash=${geohash}, score=${score})`);
     inserted++;
 
@@ -133,7 +180,26 @@ async function main() {
     }
   }
 
-  console.log(`\nDone: ${inserted} inserted, ${skipped} skipped, ${geocodeFailed} geocode failures`);
+  return { inserted, skipped, geocodeFailed };
+}
+
+async function main() {
+  const existing = await prisma.historicalRisk.findMany({ select: { geohash: true } });
+  const seen = new Set(existing.map((r) => r.geohash));
+  const touched = new Set<string>();
+
+  const fromTs = await importDelhiCrimeData(seen, touched);
+  const fromCsv = await importNcrbCsv(seen, touched);
+
+  if (touched.size > 0) {
+    console.log(`\nRecomputing RiskScore for ${touched.size} geohashes...`);
+    await recomputeRiskForGeohashes(prisma, touched);
+  }
+
+  console.log(
+    `\nDone: delhi-crime-data ${fromTs.inserted} inserted/${fromTs.skipped} skipped; ` +
+      `csv ${fromCsv.inserted} inserted/${fromCsv.skipped} skipped/${fromCsv.geocodeFailed} geocode failures`,
+  );
 }
 
 main()

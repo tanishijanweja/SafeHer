@@ -9,6 +9,7 @@ import { resolveAreaName } from "../services/area-name";
 const heatmapRouter = new Hono();
 
 const MIN_PREFIX_LEN = MIN_NEWS_PREFIX_LEN;
+const HEATMAP_DISPLAY_PREFIX_LEN = 5;
 
 const CATEGORY_LABELS: Record<string, string> = {
   sexual_violence: "Sexual violence",
@@ -44,6 +45,12 @@ function formatCategory(raw: string | null | undefined): string | null {
 heatmapRouter.get("/", async (c) => {
   try {
     const scores = await prisma.riskScore.findMany({
+      where: {
+        OR: [
+          { combinedScore: { gte: 0.15 } },
+          { incidentCount: { gt: 0 } },
+        ],
+      },
       orderBy: { combinedScore: "desc" },
     });
 
@@ -91,7 +98,7 @@ heatmapRouter.get("/", async (c) => {
       const matchedNews: typeof newsRows = [];
       for (const n of newsRows) {
         const p = commonPrefixLen(score.geohash, n.geohash);
-        if (p < MIN_PREFIX_LEN) continue;
+        if (p < HEATMAP_DISPLAY_PREFIX_LEN) continue;
         if (p > bestNewsPrefix) {
           bestNewsPrefix = p;
           matchedNews.length = 0;
@@ -174,7 +181,13 @@ heatmapRouter.get("/", async (c) => {
       };
     });
 
-    return c.json(cells);
+    const filteredCells = cells.filter(
+      (cell) =>
+        cell.newsIncidentCount > 0 ||
+        cell.communityReportCount > 0,
+    );
+
+    return c.json(filteredCells);
   } catch (error) {
     console.error("/heatmap error:", error);
     return c.json(

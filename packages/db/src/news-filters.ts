@@ -114,6 +114,174 @@ export function hasCrimeKeyword(text: string): boolean {
   return CRIME_TITLE_KEYWORDS.test(text);
 }
 
+const CRIME_KEYWORD_WEIGHTS: Record<string, number> = {
+  rape: 15,
+  raping: 15,
+  "gang-rape": 18,
+  "gang rape": 18,
+  sexual: 12,
+  molest: 12,
+  molestion: 12,
+  groping: 12,
+  groped: 12,
+  pocso: 15,
+  murder: 14,
+  murdered: 14,
+  killed: 13,
+  killing: 13,
+  homicide: 14,
+  slain: 13,
+  slay: 13,
+  kidnap: 14,
+  kidnapped: 14,
+  abduct: 14,
+  abduction: 14,
+  traffick: 14,
+  dowry: 12,
+  acid: 14,
+  "honour kill": 14,
+  "honor kill": 14,
+  lynching: 13,
+  lynched: 13,
+  lynch: 13,
+  "eve tease": 10,
+  "eve teasing": 10,
+  assault: 10,
+  assaulted: 10,
+  attacked: 9,
+  attacker: 9,
+  attack: 9,
+  shoot: 12,
+  shot: 12,
+  shooter: 12,
+  stab: 11,
+  stabbed: 11,
+  harassment: 10,
+  harass: 10,
+  stalking: 10,
+  stalk: 10,
+  domestic: 10,
+  violence: 8,
+  violent: 8,
+  robbery: 8,
+  snatching: 7,
+  snatch: 7,
+  theft: 6,
+  stolen: 6,
+  loot: 6,
+  looted: 6,
+  extortion: 7,
+  extort: 7,
+  blackmail: 7,
+  "body found": 8,
+  "dead body": 8,
+  "suspicious death": 8,
+  "missing girl": 10,
+  "missing woman": 10,
+  "missing child": 10,
+  suicide: 6,
+  "self immolation": 8,
+  "self immolate": 8,
+  fir: 3,
+  arrested: 4,
+  accused: 4,
+  crime: 4,
+  criminal: 4,
+  police: 3,
+  encounter: 3,
+  gunpoint: 4,
+  beaten: 5,
+  thrash: 5,
+  hacked: 5,
+  chopped: 5,
+  "set ablaze": 8,
+  "burnt alive": 8,
+  gang: 4,
+  thug: 4,
+  goon: 4,
+  bleeding: 5,
+  bleed: 5,
+};
+
+const WOMEN_SAFETY_KEYWORDS =
+  /\b(wom[ae]n|girl|female|lad(y|ies)|housewife|daughter|sister|mother|aunt|teenage girl|minor girl)\b/i;
+
+const SEVERITY_BOOST =
+  /\b(rape|sexual|molest|gang[\s-]?rape|pocso|murder|killed|homicide|kidnap|acid|dowry|lynch|honou?r[\s-]?kill|body found|dead body|traffick)\b/i;
+
+const CRIME_THEME_WEIGHTS: Record<string, number> = {
+  SEXUAL_VIOLENCE: 15,
+  SEXUAL_ASSAULT: 15,
+  SEXUAL_ABUSE: 14,
+  SEXUAL_HARASSMENT: 12,
+  DOMESTIC_VIOLENCE: 12,
+  KILL: 14,
+  WOUND: 8,
+  KIDNAP: 14,
+  HOSTAGE: 12,
+  TERROR: 10,
+  ASSASSINATION: 12,
+  HUMAN_TRAFFICKING: 14,
+  CRISISLEX_C07_SAFETY: 5,
+  CRISISLEX_T03_RESCUE: 4,
+  CRISISLEX_C04_CRIME: 5,
+  SOC_GENERALCRIME: 5,
+  ARMEDCONFLICT: 8,
+  PROTEST: 3,
+  TAX_FNCACT_VICTIM: 4,
+  TAX_FNCACT_POLICE: 3,
+  TAX_FNCACT_ARREST: 4,
+  TAX_FNCACT_SUSPECT: 3,
+  ARREST: 4,
+  TRIAL: 3,
+  CRIME_ILLEGAL_DRUGS: 5,
+};
+
+export function scoreArticle(
+  title: string,
+  url: string,
+  v2Themes: string,
+  affectsHeatmap: boolean,
+): number {
+  let score = 0;
+  const text = `${title} ${url}`.toLowerCase();
+
+  let keywordHits = 0;
+  for (const [keyword, weight] of Object.entries(CRIME_KEYWORD_WEIGHTS)) {
+    if (text.includes(keyword.toLowerCase())) {
+      score += weight;
+      keywordHits++;
+    }
+  }
+
+  // Diminishing returns for many keyword hits
+  if (keywordHits > 5) {
+    const excess = keywordHits - 5;
+    score -= Math.round(excess * 3);
+  }
+
+  const themeTokens = parseThemeTokens(v2Themes);
+  let themeScore = 0;
+  for (const token of themeTokens) {
+    themeScore += CRIME_THEME_WEIGHTS[token] ?? 0;
+  }
+  score += themeScore;
+
+  if (WOMEN_SAFETY_KEYWORDS.test(text)) {
+    score += 10;
+  }
+
+  if (SEVERITY_BOOST.test(text)) {
+    score += 8;
+  }
+
+  if (affectsHeatmap) {
+    score += 10;
+  }
+
+  return Math.max(0, Math.round(score));
+}
+
 export function hasCrimeTheme(v2Themes: string): boolean {
   const tokens = parseThemeTokens(v2Themes);
   return tokens.some((t) => CRIME_THEME_ALLOWLIST.has(t));

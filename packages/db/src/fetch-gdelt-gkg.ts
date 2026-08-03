@@ -33,6 +33,7 @@ import {
   evaluateArticle,
   makeDedupeKey,
   matchGazetteer,
+  scoreArticle,
   titleSimilarity,
   type ResolvedLocality,
 } from "./news-filters";
@@ -51,6 +52,7 @@ const MODE = (process.env.GKG_MODE ?? "incremental").toLowerCase();
 const BACKFILL_DAYS = Number(process.env.GKG_BACKFILL_DAYS ?? "180");
 const FILE_CONCURRENCY = Math.max(1, Number(process.env.GKG_CONCURRENCY ?? "3"));
 const CLASSIFY_CONCURRENCY = Math.max(1, Number(process.env.GKG_CLASSIFY_CONCURRENCY ?? "4"));
+const SCORE_TOP_PCT = Math.max(1, Math.min(100, Number(process.env.GKG_SCORE_TOP_PCT ?? "10")));
 const FORCE = process.env.GKG_FORCE === "1";
 const INSERT_BATCH = 25;
 
@@ -491,7 +493,7 @@ async function main() {
   console.log("=== GDELT GKG Production Ingest ===\n");
   console.log(`Base: ${GKG_BASE}`);
   console.log(`File concurrency: ${FILE_CONCURRENCY} | Classify concurrency: ${CLASSIFY_CONCURRENCY}`);
-  console.log(`Force reprocess: ${FORCE}\n`);
+  console.log(`Score top: ${SCORE_TOP_PCT}% | Force reprocess: ${FORCE}\n`);
 
   const allUrls = await resolveUrlRange();
   console.log(`Candidate archives in range: ${allUrls.length}`);
@@ -578,9 +580,19 @@ async function main() {
 
       totals.filesOk++;
 
-      // Classify candidates with limited concurrency
+      // Score all candidates and take top SCORE_TOP_PCT% for Gemini
+      const scored = result.candidates.map((cand) => ({
+        cand,
+        score: scoreArticle(cand.displayTitle, cand.url, cand.themes, cand.locality.affectsHeatmap),
+      }));
+      scored.sort((a, b) => b.score - a.score);
+      const topN = Math.max(1, Math.ceil(scored.length * SCORE_TOP_PCT / 100));
+      const geminiCandidates = scored.slice(0, topN).map((s) => s.cand);
+      const fallbackCandidates = scored.slice(topN).map((s) => s.cand);
+
+      // Classify top candidates with Gemini
       const classified = await mapPool(
-        result.candidates,
+        geminiCandidates,
         CLASSIFY_CONCURRENCY,
         async (cand) => classifyAndBuild(cand, existingUrls, existingDedupe, recentTitles),
       );
@@ -609,6 +621,32 @@ async function main() {
           continue;
         }
         toInsert.push(c.row);
+      }
+
+      // Remaining candidates use keyword fallback (no Gemini call)
+      for (const cand of fallbackCandidates) {
+        if (existingUrls.has(cand.url)) {
+          fileDup++;
+          totals.duplicates++;
+          continue;
+        }
+        const publishedAt = parsePublishedAt(cand.date);
+        const dedupeKey = makeDedupeKey(cand.displayTitle, publishedAt);
+        if (existingDedupe.has(dedupeKey)) {
+          fileDup++;
+          totals.duplicates++;
+          continue;
+        }
+        if (recentTitles.some((t) => titleSimilarity(t, cand.displayTitle) >= 0.75)) {
+          fileDup++;
+          totals.duplicates++;
+          continue;
+        }
+
+        const fb = fallbackFromTitle(cand.displayTitle);
+        if (fb.isIncident && fb.confidence >= MIN_CLASSIFY_CONFIDENCE) {
+          toInsert.push(toInsertRow(cand, cand.locality, fb, publishedAt, dedupeKey));
+        }
       }
 
       // Dedup within batch
@@ -640,7 +678,7 @@ async function main() {
       const pct = ((processedFiles / urls.length) * 100).toFixed(1);
       const elapsed = ((Date.now() - started) / 1000).toFixed(0);
       console.log(
-        `[${processedFiles}/${urls.length} ${pct}% ${elapsed}s] ${result.fileId} parsed=${result.parsed} cand=${result.candidates.length} ins=${inserted} dup=${fileDup} rej=${fileRej} fail=${fileFail}`,
+        `[${processedFiles}/${urls.length} ${pct}% ${elapsed}s] ${result.fileId} parsed=${result.parsed} cand=${result.candidates.length} gem=${geminiCandidates.length} fb=${fallbackCandidates.length} ins=${inserted} dup=${fileDup} rej=${fileRej} fail=${fileFail}`,
       );
     }
 
