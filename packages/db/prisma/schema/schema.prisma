@@ -1,10 +1,224 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated"
+  provider     = "prisma-client"
+  output       = "../generated"
   moduleFormat = "esm"
-  runtime = "bun"
+  runtime      = "bun"
 }
 
 datasource db {
   provider = "postgresql"
 }
+
+enum ReportCategory {
+  HARASSMENT
+  THEFT
+  ASSAULT
+  SUSPICIOUS_ACTIVITY
+  UNSAFE_AREA
+  OTHER
+
+  @@map("report_category")
+}
+
+enum ReportConfidence {
+  UNVERIFIED
+  COMMUNITY_CORROBORATED
+
+  @@map("report_confidence")
+}
+
+enum TripStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+
+  @@map("trip_status")
+}
+
+enum TripAlertType {
+  DEVIATION
+  STOP
+  HIGH_RISK_ZONE
+
+  @@map("trip_alert_type")
+}
+
+model TrustedContact {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  phone     String
+  relation  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("trusted_contact")
+}
+
+model Report {
+  id              String           @id @default(cuid())
+  userId          String
+  title           String
+  description     String
+  category        ReportCategory
+  severity        Int              @default(1)
+  latitude        Float
+  longitude       Float
+  imageUrl        String?
+  aiSummary       String?
+  embedding       Unsupported("vector")?
+  isSpam          Boolean          @default(false)
+  confidenceLevel ReportConfidence @default(UNVERIFIED)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  geohash         String           @default("")
+
+  @@index([geohash])
+  @@index([createdAt])
+  @@index([category])
+
+  @@map("report")
+}
+
+model RiskScore {
+  id              String   @id @default(cuid())
+  geohash         String
+  historicalScore Float
+  liveScore       Float
+  combinedScore   Float
+  incidentCount   Int      @default(0)
+  lastUpdated     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([geohash])
+
+  @@map("risk_score")
+}
+
+model HistoricalRisk {
+  id         String   @id @default(cuid())
+  district   String
+  geohash    String
+  crimeCount Int      @default(0)
+  score      Float
+  source     String   @default("NCRB")
+  updatedAt  DateTime @updatedAt
+
+  @@index([geohash])
+  @@index([district])
+
+  @@map("historical_risk")
+}
+
+model NewsIncident {
+  id             String   @id @default(cuid())
+  title          String
+  url            String   @unique
+  sourceDomain   String
+  latitude       Float
+  longitude      Float
+  geohash        String
+  publishedAt    DateTime
+  createdAt      DateTime @default(now())
+  category       String?
+  severity       Float    @default(3)
+  confidence     Float    @default(0.5)
+  isWomenSafety  Boolean  @default(false)
+  localityName   String?
+  affectsHeatmap Boolean  @default(true)
+  dedupeKey      String?
+
+  @@index([geohash])
+  @@index([publishedAt])
+  @@index([dedupeKey])
+  @@index([affectsHeatmap, publishedAt])
+  @@index([category])
+  @@index([isWomenSafety])
+
+  @@map("news_incident")
+}
+
+/// Tracks which GDELT GKG 15-min archives have been processed (resume + incremental)
+model GkgIngestFile {
+  id          String   @id @default(cuid())
+  fileId      String   @unique
+  status      String
+  parsed      Int      @default(0)
+  candidates  Int      @default(0)
+  inserted    Int      @default(0)
+  error       String?
+  processedAt DateTime @default(now())
+
+  @@index([processedAt])
+  @@index([status])
+
+  @@map("gkg_ingest_file")
+}
+
+model Trip {
+  id             String       @id @default(cuid())
+  userId         String
+  vehicleDetails String?
+  driverDetails  String?
+  plannedRoute   String?
+  status         TripStatus   @default(PLANNED)
+  startedAt      DateTime?
+  endedAt        DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tripLocations  TripLocation[]
+  tripAlerts     TripAlert[]
+  sosEvents      SOSEvent[]
+
+  @@map("trip")
+}
+
+model TripLocation {
+  id        String   @id @default(cuid())
+  tripId    String
+  latitude  Float
+  longitude Float
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@map("trip_location")
+}
+
+model TripAlert {
+  id            String       @id @default(cuid())
+  tripId        String
+  type          TripAlertType
+  aiExplanation String?
+  triggeredAt   DateTime     @default(now())
+  resolved      Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  trip          Trip         @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@map("trip_alert")
+}
+
+model SOSEvent {
+  id               String    @id @default(cuid())
+  userId           String
+  tripId           String?
+  location         String?
+  batteryLevel     Int?
+  audioUrl         String?
+  triggeredAt      DateTime  @default(now())
+  contactsNotified Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip             Trip?     @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  @@map("sos_event")
+}
+

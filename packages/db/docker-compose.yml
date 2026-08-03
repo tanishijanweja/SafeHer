@@ -2,7 +2,7 @@ name: safe-her
 
 services:
   postgres:
-    image: postgres:18
+    image: pgvector/pgvector:pg18
     container_name: safe-her-postgres
     environment:
       POSTGRES_DB: safe-her
