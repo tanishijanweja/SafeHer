@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 
+import { auth } from "@safe-her/auth";
 import prisma, { ReportCategory } from "@safe-her/db";
 
 import { analyzeReport, generateEmbedding } from "../services/gemini";
@@ -35,20 +36,13 @@ async function findDuplicate(vectorLiteral: string) {
   return null;
 }
 
-async function getDemoUser() {
-  // TODO: Replace with authenticated user after Better Auth integration.
-  const existing = await prisma.user.findFirst();
-  if (existing) return existing;
-  return prisma.user.create({
-    data: {
-      id: crypto.randomUUID(),
-      name: "Demo User",
-      email: "demo@safe-her.local",
-    },
-  });
-}
-
 reportsRouter.post("/", async (c) => {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+
+  if (!session?.user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
   const body = await c.req.json();
   const parsed = reportSchema.safeParse(body);
 
@@ -85,10 +79,9 @@ reportsRouter.post("/", async (c) => {
         return c.json({ error: "Duplicate report", existing: duplicate }, 409);
       }
 
-      const user = await getDemoUser();
       const report = await prisma.report.create({
         data: {
-          userId: user.id,
+          userId: session.user.id,
           title: analysis.summary,
           description,
           latitude,
@@ -108,10 +101,9 @@ reportsRouter.post("/", async (c) => {
     console.error("Gemini embedding failed, falling back to insert:", error);
   }
 
-  const user = await getDemoUser();
   const report = await prisma.report.create({
     data: {
-      userId: user.id,
+      userId: session.user.id,
       title: analysis.summary,
       description,
       latitude,
