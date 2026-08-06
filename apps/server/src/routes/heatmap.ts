@@ -82,11 +82,17 @@ heatmapRouter.get("/", async (c) => {
         by: ["geohash"],
         where: { isSpam: false },
         _count: { _all: true },
+        _max: { createdAt: true },
       }),
     ]);
 
     const reportCountByGh = new Map(
       reportGroups.map((g) => [g.geohash, g._count._all]),
+    );
+    const latestReportByGh = new Map<string, Date>(
+      reportGroups
+        .filter((g) => g._max.createdAt !== null)
+        .map((g) => [g.geohash, g._max.createdAt as Date]),
     );
 
     const cells = scores.map((score) => {
@@ -167,6 +173,13 @@ heatmapRouter.get("/", async (c) => {
         reasons.push("No strong recent risk signals for this area");
       }
 
+      // Latest activity for the area: newest matched news article, then newest
+      // community report, then fall back to the risk score update time.
+      const latestActivityAt =
+        matchedNews[0]?.publishedAt ??
+        latestReportByGh.get(score.geohash) ??
+        score.lastUpdated;
+
       return {
         id: score.geohash,
         latitude: lat,
@@ -181,7 +194,7 @@ heatmapRouter.get("/", async (c) => {
           title: n.title,
           publishedAt: new Date(n.publishedAt).toISOString(),
         })),
-        lastUpdated: score.lastUpdated.toISOString(),
+        lastUpdated: new Date(latestActivityAt).toISOString(),
       };
     });
 

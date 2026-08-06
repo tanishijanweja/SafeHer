@@ -165,7 +165,7 @@ export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
 
         <section className="!mt-4 border-t border-zinc-100 pt-2.5">
           <h4 className="text-[10px] font-bold tracking-[0.14em] text-zinc-400 uppercase">
-            Last Updated
+            Latest Activity
           </h4>
           <p className="mt-0.5 text-[12px] font-medium text-zinc-600">
             {formatDateTime(area.lastUpdated)}
