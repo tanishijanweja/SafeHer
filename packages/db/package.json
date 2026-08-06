@@ -13,7 +13,6 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "postinstall": "prisma generate",
     "db:studio": "prisma studio",
     "db:start": "docker compose up -d",
     "db:watch": "docker compose up",
@@ -22,7 +21,6 @@
     "db:import": "bun run scripts/import-historical.ts",
     "db:seed-incidents": "bun run scripts/seed-incidents.ts",
     "db:fetch": "bun run src/fetch-crime-data.ts",
-
     "db:fetch-news": "bun run src/fetch-gdelt.ts",
     "db:fetch-news-gkg": "bun run src/fetch-gdelt-gkg.ts",
     "db:fetch-news-incremental": "GKG_MODE=incremental bun run src/fetch-gdelt-gkg.ts",
