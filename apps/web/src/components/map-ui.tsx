@@ -1,13 +1,26 @@
 "use client";
 
+import { useState } from "react";
+
 import { cn } from "@safe-her/ui/lib/utils";
 
 import {
   type AreaRegion,
   type RiskLevel,
-  relativeTime,
+  formatDateTime,
   riskColor,
 } from "@/lib/heatmap-areas";
+
+const RISK_BADGE: Record<
+  RiskLevel,
+  { text: string; bg: string; ring: string }
+> = {
+  High: { text: "text-rose-700", bg: "bg-rose-500/10", ring: "ring-rose-500/25" },
+  Medium: { text: "text-amber-800", bg: "bg-amber-500/10", ring: "ring-amber-500/25" },
+  Low: { text: "text-emerald-800", bg: "bg-emerald-500/10", ring: "ring-emerald-500/25" },
+};
+
+const NEWSLIST_PREVIEW = 3;
 
 export function RiskBadge({ level, compact }: { level: RiskLevel; compact?: boolean }) {
   const styles =
@@ -35,47 +48,129 @@ export function RiskBadge({ level, compact }: { level: RiskLevel; compact?: bool
 }
 
 export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
+  const [showAllNews, setShowAllNews] = useState(false);
+  const badge = RISK_BADGE[area.riskLevel];
+  const allNews = area.newsArticles;
+  const visibleNews = showAllNews ? allNews : allNews.slice(0, NEWSLIST_PREVIEW);
+  const hasMoreNews = allNews.length > NEWSLIST_PREVIEW;
+
   return (
-    <div className="min-w-[188px] max-w-[240px] font-sans text-zinc-900">
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <div className="text-[13px] leading-snug font-semibold tracking-tight">
-          {area.areaName}
+    <div className="safeher-hover-card-inner flex max-h-[min(450px,calc(100vh-16px))] w-[360px] max-w-full flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-zinc-900 shadow-[0_18px_50px_rgba(24,24,27,0.18),0_0_0_1px_rgba(24,24,27,0.04)]">
+      <div className="shrink-0 border-b border-zinc-100 px-4 pb-3 pt-4">
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-[15px] leading-snug font-bold tracking-tight">
+            {area.areaName}
+          </h3>
         </div>
-      </div>
-      <div className="mb-2.5">
-        <RiskBadge level={area.riskLevel} compact />
-      </div>
-
-      {area.reasons.length > 0 && (
-        <div className="mb-2">
-          <div className="mb-1 text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">
-            Why
-          </div>
-          <ul className="space-y-0.5 pl-3.5 text-[12px] leading-snug text-zinc-700">
-            {area.reasons.slice(0, 3).map((r) => (
-              <li key={r} className="list-disc">
-                {r}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {area.recentCategories.length > 0 && (
-        <div className="mb-2.5 flex flex-wrap gap-1">
-          {area.recentCategories.slice(0, 3).map((cat) => (
+        <div className="mt-2">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1",
+              badge.bg,
+              badge.text,
+              badge.ring,
+            )}
+          >
             <span
-              key={cat}
-              className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600"
-            >
-              {cat}
-            </span>
-          ))}
+              className="size-1.5 rounded-full"
+              style={{ backgroundColor: riskColor(area.riskLevel) }}
+            />
+            {area.riskLevel} Risk
+          </span>
         </div>
-      )}
+      </div>
 
-      <div className="border-t border-zinc-100 pt-2 text-[10.5px] text-zinc-400">
-        Updated {relativeTime(area.lastUpdated)}
+      <div className="safeher-hover-scroll min-h-0 flex-1 space-y-3.5 overflow-y-auto px-4 py-3.5">
+        {area.reasons.length > 0 && (
+          <section>
+            <h4 className="mb-1.5 text-[10px] font-bold tracking-[0.14em] text-zinc-400 uppercase">
+              Why
+            </h4>
+            <ul className="space-y-1 pl-4 text-[12.5px] leading-snug text-zinc-700">
+              {area.reasons.slice(0, 3).map((r) => (
+                <li key={r} className="list-disc">
+                  {r}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {area.recentCategories.length > 0 && (
+          <section>
+            <h4 className="mb-1.5 text-[10px] font-bold tracking-[0.14em] text-zinc-400 uppercase">
+              Recent Incidents
+            </h4>
+            <ul className="space-y-1 pl-4 text-[12.5px] leading-snug text-zinc-700">
+              {area.recentCategories.slice(0, 3).map((cat) => (
+                <li key={cat} className="list-disc">
+                  {cat}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {allNews.length > 0 && (
+          <section>
+            <h4 className="mb-1.5 text-[10px] font-bold tracking-[0.14em] text-zinc-400 uppercase">
+              Recent News
+            </h4>
+            <ul className="space-y-2.5 text-[12px] leading-snug">
+              {visibleNews.map((article) => (
+                <li
+                  key={article.title}
+                  className="flex flex-col gap-0.5 rounded-lg bg-zinc-50 px-2.5 py-1.5 ring-1 ring-zinc-100"
+                >
+                  <span className="line-clamp-2 text-zinc-800">{article.title}</span>
+                  <span className="text-[10.5px] font-medium text-zinc-400">
+                    {formatDateTime(article.publishedAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            {hasMoreNews && (
+              <div className="mt-2">
+                {showAllNews ? (
+                  <div className="safeher-hover-news-scroll max-h-[150px] overflow-y-auto">
+                    <ul className="space-y-2.5 text-[12px] leading-snug">
+                      {allNews.slice(NEWSLIST_PREVIEW).map((article) => (
+                        <li
+                          key={article.title}
+                          className="flex flex-col gap-0.5 rounded-lg bg-zinc-50 px-2.5 py-1.5 ring-1 ring-zinc-100"
+                        >
+                          <span className="line-clamp-2 text-zinc-800">{article.title}</span>
+                          <span className="text-[10.5px] font-medium text-zinc-400">
+                            {formatDateTime(article.publishedAt)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setShowAllNews((s) => !s)}
+                  className="mt-1 text-[11px] font-semibold text-zinc-500 transition-colors hover:text-zinc-900"
+                >
+                  {showAllNews
+                    ? "Show less"
+                    : `View all (${allNews.length})`}
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+
+        <section className="!mt-4 border-t border-zinc-100 pt-2.5">
+          <h4 className="text-[10px] font-bold tracking-[0.14em] text-zinc-400 uppercase">
+            Last Updated
+          </h4>
+          <p className="mt-0.5 text-[12px] font-medium text-zinc-600">
+            {formatDateTime(area.lastUpdated)}
+          </p>
+        </section>
       </div>
     </div>
   );

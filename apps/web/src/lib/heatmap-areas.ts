@@ -2,6 +2,11 @@
 
 export type RiskLevel = "Low" | "Medium" | "High";
 
+export type NewsArticleRef = {
+  title: string;
+  publishedAt: string;
+};
+
 export type HeatmapCell = {
   id: string;
   latitude: number;
@@ -12,6 +17,7 @@ export type HeatmapCell = {
   communityReportCount: number;
   recentCategories: string[];
   reasons: string[];
+  newsArticles?: NewsArticleRef[];
   lastUpdated: string;
 };
 
@@ -23,6 +29,7 @@ export type AreaRegion = {
   communityReportCount: number;
   recentCategories: string[];
   reasons: string[];
+  newsArticles: NewsArticleRef[];
   lastUpdated: string;
   /** Leaflet latlng rings: [lat, lng][] */
   polygon: [number, number][];
@@ -136,8 +143,8 @@ function buildSimpleReasons(
   if (newsCount > 0) {
     out.push(
       newsCount === 1
-        ? "1 recent crime news report"
-        : `${newsCount} recent crime news reports`,
+        ? "1 recent news report"
+        : `${newsCount} recent news reports`,
     );
   }
 
@@ -149,8 +156,8 @@ function buildSimpleReasons(
   if (reportCount > 0) {
     out.push(
       reportCount === 1
-        ? "1 community safety report"
-        : `${reportCount} community safety reports`,
+        ? "1 community report"
+        : `${reportCount} community reports`,
     );
   } else {
     out.push("No community reports");
@@ -170,6 +177,7 @@ export function groupCellsIntoAreas(cells: HeatmapCell[]): AreaRegion[] {
     newsIncidentCount: number;
     communityReportCount: number;
     categories: Set<string>;
+    articles: Map<string, string>;
     reasons: string[];
     lastUpdated: string;
     corners: [number, number][];
@@ -190,6 +198,7 @@ export function groupCellsIntoAreas(cells: HeatmapCell[]): AreaRegion[] {
         newsIncidentCount: 0,
         communityReportCount: 0,
         categories: new Set(),
+        articles: new Map(),
         reasons: [],
         lastUpdated: cell.lastUpdated,
         corners: [],
@@ -205,6 +214,9 @@ export function groupCellsIntoAreas(cells: HeatmapCell[]): AreaRegion[] {
     g.newsIncidentCount = Math.max(g.newsIncidentCount, cell.newsIncidentCount);
     g.communityReportCount += cell.communityReportCount;
     for (const c of cell.recentCategories) g.categories.add(c);
+    for (const a of cell.newsArticles ?? []) {
+      if (a.title && a.publishedAt) g.articles.set(a.title, a.publishedAt);
+    }
     g.reasons.push(...cell.reasons);
     if (new Date(cell.lastUpdated).getTime() > new Date(g.lastUpdated).getTime()) {
       g.lastUpdated = cell.lastUpdated;
@@ -267,6 +279,10 @@ export function groupCellsIntoAreas(cells: HeatmapCell[]): AreaRegion[] {
         g.communityReportCount,
         g.reasons,
       ),
+      newsArticles: [...g.articles.entries()]
+        .map(([title, publishedAt]) => ({ title, publishedAt }))
+        .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+        .slice(0, 5),
       lastUpdated: g.lastUpdated,
       polygon: hull,
       center: { lat: g.latSum / g.n, lng: g.lngSum / g.n },
@@ -303,4 +319,31 @@ export function relativeTime(iso: string): string {
   if (days < 30) return days === 1 ? "1 day ago" : `${days} days ago`;
   const months = Math.floor(days / 30);
   return months === 1 ? "1 month ago" : `${months} months ago`;
+}
+
+const MONTHS_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/** Format an ISO timestamp as e.g. "6 Aug 2026 • 9:00 AM" in local time. */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "unknown";
+  let h = d.getHours();
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12;
+  if (h === 0) h = 12;
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()} • ${h}:${mm} ${ampm}`;
 }

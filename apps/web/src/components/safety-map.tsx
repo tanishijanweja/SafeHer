@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { createPortal } from "react-dom";
+
 import { divIcon, type LeafletMouseEvent } from "leaflet";
 import {
   CircleMarker,
@@ -10,7 +12,6 @@ import {
   Polygon,
   Popup,
   TileLayer,
-  Tooltip,
   useMap,
   useMapEvents,
 } from "react-leaflet";
@@ -61,6 +62,19 @@ type SafetyMapProps = {
   showLegend?: boolean;
   onMapClick?: (lat: number, lng: number) => void;
 };
+
+type HoverCardState = {
+  id: string;
+  node: React.ReactNode;
+  lat: number;
+  lng: number;
+  closing?: boolean;
+};
+
+const HOVER_CLOSE_DELAY_MS = 150;
+const HOVER_FADE_MS = 120;
+const HOVER_CARD_WIDTH = 360;
+const HOVER_CARD_MARGIN = 10;
 
 function useIsCoarsePointer() {
   const [coarse, setCoarse] = useState(false);
@@ -132,6 +146,8 @@ function PointMarker({
   isCoarse,
   onActivate,
   onDeactivate,
+  onHover,
+  onHoverEnd,
   registerMarker,
 }: {
   point: MapPoint;
@@ -140,6 +156,8 @@ function PointMarker({
   isCoarse: boolean;
   onActivate: (id: string) => void;
   onDeactivate: () => void;
+  onHover: (id: string, node: React.ReactNode, lat: number, lng: number) => void;
+  onHoverEnd: () => void;
   registerMarker: (
     id: string,
     marker: { openPopup: () => void; closePopup: () => void } | null,
@@ -160,27 +178,26 @@ function PointMarker({
     [id, onActivate],
   );
 
+  const hasHover = point.hover != null && !isCoarse;
+
   const eventHandlers = useMemo(
     () => ({
       click: (e: LeafletMouseEvent) => openDetails(e),
+      mouseover: (e: LeafletMouseEvent) => {
+        if (hasHover) {
+          e.originalEvent?.stopPropagation?.();
+          onHover(id, point.hover, point.lat, point.lng);
+        }
+      },
+      mouseout: (e: LeafletMouseEvent) => {
+        if (hasHover) {
+          e.originalEvent?.stopPropagation?.();
+          onHoverEnd();
+        }
+      },
     }),
-    [openDetails],
+    [openDetails, hasHover, onHover, onHoverEnd, id, point.hover, point.lat, point.lng],
   );
-
-  const richHover = typeof point.hover !== "string" && point.hover != null;
-  const hoverTip =
-    point.hover && !isCoarse ? (
-      <Tooltip
-        direction="top"
-        offset={[0, richHover ? -10 : -8]}
-        opacity={1}
-        sticky={false}
-        className={richHover ? "safeher-area-tooltip" : "safeher-map-hover"}
-        permanent={false}
-      >
-        {point.hover}
-      </Tooltip>
-    ) : null;
 
   const detailPopup = point.popup ? (
     <Popup
@@ -219,7 +236,6 @@ function PointMarker({
         }}
         eventHandlers={eventHandlers}
       >
-        {!isActive ? hoverTip : null}
         {detailPopup}
       </CircleMarker>
     );
@@ -232,7 +248,6 @@ function PointMarker({
       icon={pinIcon}
       eventHandlers={eventHandlers}
     >
-      {!isActive ? hoverTip : null}
       {detailPopup}
     </Marker>
   );
@@ -240,13 +255,11 @@ function PointMarker({
 
 function AreaPolygon({
   region,
-  isCoarse,
   isHovered,
   onHover,
   onLeave,
 }: {
   region: MapPolygon;
-  isCoarse: boolean;
   isHovered: boolean;
   onHover: (id: string) => void;
   onLeave: () => void;
@@ -272,19 +285,7 @@ function AreaPolygon({
         lineCap: "round",
       }}
       eventHandlers={eventHandlers}
-    >
-      {region.hover && !isCoarse ? (
-        <Tooltip
-          sticky
-          direction="top"
-          opacity={1}
-          className="safeher-area-tooltip"
-          permanent={false}
-        >
-          {region.hover}
-        </Tooltip>
-      ) : null}
-    </Polygon>
+    />
   );
 }
 
@@ -319,6 +320,122 @@ function FloatingLegend() {
   );
 }
 
+/**
+ * Renders the rich hover card in a fixed-position portal (never clipped by the
+ * map/container). Re-anchors on the marker and clamps to the viewport edges so
+ * it is always fully visible.
+ */
+function HoverCardPortal({
+  hover,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  hover: HoverCardState;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  const map = useMap();
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [ready, setReady] = useState(false);
+
+  // React's synthetic onMouseEnter/onMouseLeave are unreliable for portal
+  // content, so we detect card entry/exit from the native (bubbling)
+  // mouseover/mouseout events instead. The relatedTarget containment check
+  // ignores moves between the card's own children.
+  const handleOver = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const related = e.relatedTarget as Node | null;
+      if (related && e.currentTarget.contains(related)) return;
+      onMouseEnter();
+    },
+    [onMouseEnter],
+  );
+
+  const handleOut = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const related = e.relatedTarget as Node | null;
+      if (related && e.currentTarget.contains(related)) return;
+      onMouseLeave();
+    },
+    [onMouseLeave],
+  );
+
+  const updatePosition = useCallback(() => {
+    const el = cardRef.current;
+    if (!el || typeof window === "undefined") return;
+    const mapEl = map.getContainer();
+    const pt = map.latLngToContainerPoint([hover.lat, hover.lng]);
+    const rect = mapEl.getBoundingClientRect();
+    const cardW = Math.min(
+      HOVER_CARD_WIDTH,
+      window.innerWidth - HOVER_CARD_MARGIN * 2,
+    );
+    const cardH = el.offsetHeight || 240;
+    const vx = rect.left + pt.x;
+    const vy = rect.top + pt.y;
+    const m = HOVER_CARD_MARGIN;
+
+    let x = vx - cardW / 2;
+    if (x < m) x = m;
+    else if (x + cardW > window.innerWidth - m) x = window.innerWidth - cardW - m;
+
+    // Prefer above the marker; flip below when there's no room above.
+    let y = vy - 18 - cardH;
+    if (y < m) y = vy + 14;
+    if (y + cardH > window.innerHeight - m) y = Math.max(m, window.innerHeight - cardH - m);
+
+    setPos({ x, y });
+    setReady(true);
+  }, [map, hover.lat, hover.lng]);
+
+  useEffect(() => {
+    updatePosition();
+    map.on("move", updatePosition);
+    map.on("zoomstart", updatePosition);
+    map.on("zoom", updatePosition);
+    map.on("resize", updatePosition);
+
+    const onWindow = () => updatePosition();
+    window.addEventListener("resize", onWindow);
+    window.addEventListener("scroll", onWindow, true);
+    return () => {
+      map.off("move", updatePosition);
+      map.off("zoomstart", updatePosition);
+      map.off("zoom", updatePosition);
+      map.off("resize", updatePosition);
+      window.removeEventListener("resize", onWindow);
+      window.removeEventListener("scroll", onWindow, true);
+    };
+  }, [map, updatePosition]);
+
+  if (typeof document === "undefined" || typeof window === "undefined") return null;
+
+  return createPortal(
+    <div
+      ref={cardRef}
+      onMouseOver={handleOver}
+      onMouseOut={handleOut}
+      className={cn(
+        "safeher-hover-card",
+        hover.closing && "safeher-hover-card--closing",
+      )}
+      style={{
+        position: "fixed",
+        left: pos.x,
+        top: pos.y,
+        zIndex: 4000,
+        visibility: ready ? "visible" : "hidden",
+        width: Math.min(HOVER_CARD_WIDTH, window.innerWidth - HOVER_CARD_MARGIN * 2),
+        maxWidth: "calc(100vw - 16px)",
+      }}
+    >
+      <div key={hover.id}>{hover.node}</div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function SafetyMap({
   center,
   points = [],
@@ -335,6 +452,16 @@ export default function SafetyMap({
   const isCoarse = useIsCoarsePointer();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [hoveredPoly, setHoveredPoly] = useState<string | null>(null);
+  const [hover, setHover] = useState<HoverCardState | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverRef = useRef<HoverCardState | null>(null);
+  hoverRef.current = hover;
+  // Track where the cursor currently is so the card only closes once it has
+  // left BOTH the hover source (marker/polygon) and the card itself. Refs keep
+  // the check synchronous, so a leave that lands directly on the other target
+  // is always caught and never closes the card.
+  const inSourceRef = useRef(false);
+  const inCardRef = useRef(false);
   const markerRefs = useRef<Map<string, { openPopup: () => void; closePopup: () => void }>>(
     new Map(),
   );
@@ -349,8 +476,83 @@ export default function SafetyMap({
 
   const activate = useCallback((id: string) => setActiveId(id), []);
   const deactivate = useCallback(() => setActiveId(null), []);
-  const onPolyHover = useCallback((id: string) => setHoveredPoly(id), []);
-  const onPolyLeave = useCallback(() => setHoveredPoly(null), []);
+
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+    setHover((s) => (s && s.closing ? { ...s, closing: false } : s));
+  }, []);
+
+  // Two-stage close: nothing visually changes during the delay window, so brief
+  // leaves that get cancelled (moving from marker to card, or tiny pointer wobble)
+  // never cause a flicker. Only after the delay elapses do we fade out.
+  const triggerClose = useCallback(() => {
+    // Still hovering the marker, polygon, or card: do nothing.
+    if (inSourceRef.current || inCardRef.current) return;
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => {
+      closeTimer.current = null;
+      setHover((s) => (s ? { ...s, closing: true } : s));
+      closeTimer.current = setTimeout(() => {
+        closeTimer.current = null;
+        setHover(null);
+      }, HOVER_FADE_MS);
+    }, HOVER_CLOSE_DELAY_MS);
+  }, []);
+
+  const handleSourceLeave = useCallback(() => {
+    inSourceRef.current = false;
+    triggerClose();
+  }, [triggerClose]);
+
+  const handleCardEnter = useCallback(() => {
+    inCardRef.current = true;
+    cancelClose();
+  }, [cancelClose]);
+
+  const handleCardLeave = useCallback(() => {
+    inCardRef.current = false;
+    triggerClose();
+  }, [triggerClose]);
+
+  const requestHover = useCallback(
+    (id: string, node: React.ReactNode, lat: number, lng: number) => {
+      inSourceRef.current = true;
+      if (closeTimer.current) {
+        clearTimeout(closeTimer.current);
+        closeTimer.current = null;
+      }
+      setHover((prev) => {
+        // Already showing this marker and not closing: skip redundant updates so
+        // React doesn't churn re-renders while the cursor sits still on the pin.
+        if (prev && prev.id === id && !prev.closing) return prev;
+        return { id, node, lat, lng };
+      });
+    },
+    [],
+  );
+
+  const onPolyHover = useCallback((id: string) => {
+    setHoveredPoly(id);
+    const region = polygons.find((p) => p.id === id);
+    if (!region?.hover || isCoarse) return;
+    let lat = 0;
+    let lng = 0;
+    for (const [a, b] of region.positions) {
+      lat += a;
+      lng += b;
+    }
+    lat /= region.positions.length;
+    lng /= region.positions.length;
+    requestHover(id, region.hover, lat, lng);
+  }, [polygons, isCoarse, requestHover]);
+
+  const onPolyLeave = useCallback(() => {
+    setHoveredPoly(null);
+    handleSourceLeave();
+  }, [handleSourceLeave]);
 
   const tileUrl = darkTiles
     ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -365,41 +567,45 @@ export default function SafetyMap({
       style={{ height, borderRadius: className ? undefined : 12 }}
     >
       <style>{`
-        .safeher-map-hover {
-          background: rgba(24, 24, 27, 0.92) !important;
-          color: #fff !important;
-          border: none !important;
-          border-radius: 10px !important;
-          box-shadow: 0 8px 24px rgba(0,0,0,0.22) !important;
-          padding: 7px 11px !important;
-          font-size: 12px !important;
-          font-weight: 600 !important;
-          white-space: nowrap !important;
-          line-height: 1.3 !important;
-          backdrop-filter: blur(8px);
+        .safeher-hover-card {
+          transform-origin: bottom center;
+          animation: safeher-card-in 130ms cubic-bezier(0.16, 1, 0.3, 1);
+          will-change: transform, opacity;
         }
-        .safeher-map-hover::before {
-          border-top-color: rgba(24, 24, 27, 0.92) !important;
+        .safeher-hover-card--closing {
+          opacity: 0;
+          transform: scale(0.97);
+          transition: opacity 110ms ease, transform 110ms ease;
+          pointer-events: none;
         }
-        .leaflet-tooltip-top.safeher-map-hover::before {
-          border-top-color: rgba(24, 24, 27, 0.92) !important;
+        @keyframes safeher-card-in {
+          from {
+            opacity: 0;
+            transform: scale(0.98) translateY(4px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
         }
-        .safeher-area-tooltip {
-          background: rgba(255,255,255,0.97) !important;
-          color: #18181b !important;
-          border: none !important;
-          border-radius: 14px !important;
-          box-shadow: 0 12px 40px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.04) !important;
-          padding: 12px 14px !important;
-          font-size: 12.5px !important;
-          font-weight: 400 !important;
-          line-height: 1.4 !important;
-          white-space: normal !important;
-          max-width: 260px !important;
-          backdrop-filter: blur(12px);
+        .safeher-hover-scroll::-webkit-scrollbar,
+        .safeher-hover-news-scroll::-webkit-scrollbar {
+          width: 6px;
         }
-        .safeher-area-tooltip::before {
-          display: none !important;
+        .safeher-hover-scroll::-webkit-scrollbar-thumb,
+        .safeher-hover-news-scroll::-webkit-scrollbar-thumb {
+          background: rgba(113, 113, 122, 0.35);
+          border-radius: 9999px;
+        }
+        .safeher-hover-scroll::-webkit-scrollbar-track,
+        .safeher-hover-news-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .line-clamp-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
         }
         .safeher-map-popup .leaflet-popup-content-wrapper {
           background: rgba(255,255,255,0.98);
@@ -496,7 +702,6 @@ export default function SafetyMap({
           <AreaPolygon
             key={poly.id}
             region={poly}
-            isCoarse={isCoarse}
             isHovered={hoveredPoly === poly.id}
             onHover={onPolyHover}
             onLeave={onPolyLeave}
@@ -514,10 +719,20 @@ export default function SafetyMap({
               isCoarse={isCoarse}
               onActivate={activate}
               onDeactivate={deactivate}
+              onHover={requestHover}
+              onHoverEnd={handleSourceLeave}
               registerMarker={registerMarker}
             />
           );
         })}
+
+        {hover ? (
+          <HoverCardPortal
+            hover={hover}
+            onMouseEnter={handleCardEnter}
+            onMouseLeave={handleCardLeave}
+          />
+        ) : null}
       </MapContainer>
       {showLegend && (polygons.length > 0 || points.length > 0) ? <FloatingLegend /> : null}
     </div>

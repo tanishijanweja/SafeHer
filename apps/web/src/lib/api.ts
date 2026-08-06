@@ -32,6 +32,10 @@ export type HeatmapCell = {
   communityReportCount: number;
   recentCategories: string[];
   reasons: string[];
+  newsArticles?: {
+    title: string;
+    publishedAt: string;
+  }[];
   lastUpdated: string;
 };
 

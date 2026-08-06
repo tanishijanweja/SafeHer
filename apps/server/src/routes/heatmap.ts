@@ -177,6 +177,10 @@ heatmapRouter.get("/", async (c) => {
         communityReportCount,
         recentCategories: categories,
         reasons,
+        newsArticles: matchedNews.slice(0, 8).map((n) => ({
+          title: n.title,
+          publishedAt: new Date(n.publishedAt).toISOString(),
+        })),
         lastUpdated: score.lastUpdated.toISOString(),
       };
     });
