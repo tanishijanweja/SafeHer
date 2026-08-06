@@ -10,7 +10,13 @@ import { authClient } from "@/lib/auth-client";
 
 import Loader from "./loader";
 
-export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
+export default function SignInForm({
+  redirect = "/",
+  onSwitchToSignUp,
+}: {
+  redirect?: string;
+  onSwitchToSignUp: () => void;
+}) {
   const router = useRouter();
   const { isPending } = authClient.useSession();
 
@@ -27,7 +33,7 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
         },
         {
           onSuccess: () => {
-            router.push("/dashboard");
+            router.push(redirect as never);
             toast.success("Sign in successful");
           },
           onError: (error) => {

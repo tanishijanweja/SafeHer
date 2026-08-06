@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { authClient } from "@/lib/auth-client";
 
@@ -10,24 +10,34 @@ import Loader from "@/components/loader";
 import SignInForm from "@/components/sign-in-form";
 import SignUpForm from "@/components/sign-up-form";
 
-export default function LoginPage() {
+function LoginContent() {
   const [showSignIn, setShowSignIn] = useState(true);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get("redirect") || "/";
   const { data: session, isPending } = authClient.useSession();
 
   useEffect(() => {
     if (session) {
-      router.push("/dashboard");
+      router.push(redirect as never);
     }
-  }, [session, router]);
+  }, [session, router, redirect]);
 
   if (isPending || session) {
     return <Loader />;
   }
 
   return showSignIn ? (
-    <SignInForm onSwitchToSignUp={() => setShowSignIn(false)} />
+    <SignInForm redirect={redirect} onSwitchToSignUp={() => setShowSignIn(false)} />
   ) : (
-    <SignUpForm onSwitchToSignIn={() => setShowSignIn(true)} />
+    <SignUpForm redirect={redirect} onSwitchToSignIn={() => setShowSignIn(true)} />
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<Loader />}>
+      <LoginContent />
+    </Suspense>
   );
 }

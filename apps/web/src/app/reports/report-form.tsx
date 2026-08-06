@@ -56,7 +56,7 @@ export default function ReportPage() {
   async function handleSubmit() {
     if (!session) {
       toast.error("Please login first to report an incident");
-      router.push("/login");
+      router.push("/login?redirect=/reports");
       return;
     }
 
@@ -72,16 +72,21 @@ export default function ReportPage() {
     });
 
     if (res.status === 401) {
-      router.push("/login");
+      router.push("/login?redirect=/reports");
+      return;
+    }
+
+    if (res.status === 409) {
+      toast.success("Thank you, this report was already submitted");
       return;
     }
 
     if (!res.ok) {
-      alert("Failed to submit report. Please try again.");
+      toast.error("Failed to submit report. Please try again.");
       return;
     }
 
-    alert("Report submitted");
+    toast.success("Report submitted");
   }
 
   return (

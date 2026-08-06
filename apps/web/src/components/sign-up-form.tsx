@@ -10,7 +10,13 @@ import { authClient } from "@/lib/auth-client";
 
 import Loader from "./loader";
 
-export default function SignUpForm({ onSwitchToSignIn }: { onSwitchToSignIn: () => void }) {
+export default function SignUpForm({
+  redirect = "/",
+  onSwitchToSignIn,
+}: {
+  redirect?: string;
+  onSwitchToSignIn: () => void;
+}) {
   const router = useRouter();
   const { isPending } = authClient.useSession();
 
@@ -29,7 +35,7 @@ export default function SignUpForm({ onSwitchToSignIn }: { onSwitchToSignIn: () 
         },
         {
           onSuccess: () => {
-            router.push("/dashboard");
+            router.push(redirect as never);
             toast.success("Sign up successful");
           },
           onError: (error) => {
