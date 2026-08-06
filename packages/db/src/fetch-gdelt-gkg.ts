@@ -547,6 +547,7 @@ async function main() {
     duplicates: 0,
     geminiRej: 0,
     geminiFailed: 0,
+    retentionDeleted: 0,
   };
 
   const started = Date.now();
@@ -688,7 +689,7 @@ async function main() {
     }
   }
 
-  savePending(pending);
+savePending(pending);
 
   const elapsedMin = ((Date.now() - started) / 60000).toFixed(1);
 
@@ -704,6 +705,34 @@ async function main() {
   console.log(`Gemini failed:        ${totals.geminiFailed}`);
   console.log(`Pending queue:        ${pending.length}`);
   console.log("====================================\n");
+
+  // Incremental retention: prune news older than RETENTION_HOURS (default 72h) so the
+  // DB only holds fresh live news, then recompute every RiskScore cell those rows fed.
+  // if you want last 7 days data to live, add 168 insteaad of 72
+  if (MODE === "incremental") {
+    const retentionHours = Number(process.env.GKG_RETENTION_HOURS ?? "72");
+    const cutoff = new Date(Date.now() - retentionHours * 60 * 60 * 1000);
+
+    const affected = await prisma.newsIncident.findMany({
+      where: { publishedAt: { lt: cutoff }, affectsHeatmap: true },
+      distinct: ["geohash"],
+      select: { geohash: true },
+    });
+    for (const a of affected) touchedGeohashes.add(a.geohash);
+
+    const deleted = await prisma.newsIncident.deleteMany({
+      where: { publishedAt: { lt: cutoff } },
+    });
+    totals.retentionDeleted = deleted.count;
+
+    if (deleted.count > 0) {
+      console.log(
+        `Retention: deleted ${deleted.count} news incident(s) older than ${retentionHours}h`,
+      );
+    } else {
+      console.log(`Retention: nothing older than ${retentionHours}h to delete`);
+    }
+  }
 
   if (touchedGeohashes.size > 0) {
     console.log(`Recomputing RiskScore for ${touchedGeohashes.size} geohashes...`);
