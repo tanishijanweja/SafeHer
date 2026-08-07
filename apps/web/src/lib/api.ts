@@ -6,6 +6,62 @@ export const API_URL = env.NEXT_PUBLIC_SERVER_URL;
 
 export type ReportConfidence = "UNVERIFIED" | "COMMUNITY_CORROBORATED";
 
+export type TrustedContact = {
+  id: string;
+  userId: string;
+  name: string;
+  phone: string;
+  relation: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ContactInput = {
+  name: string;
+  phone: string;
+};
+
+export type NotifiedContact = {
+  contactId: string;
+  name: string;
+  phone: string;
+  channel: "sms";
+  delivered: boolean;
+};
+
+export type SosTriggerResult = {
+  event: { id: string; contactsNotified: boolean };
+  notifiedContacts: NotifiedContact[];
+};
+
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function readError(res: Response): Promise<ApiError> {
+  let message = `Request failed (${res.status})`;
+  try {
+    const body = (await res.json()) as { error?: unknown };
+    if (typeof body.error === "string") {
+      message = body.error;
+    } else if (body.error && typeof body.error === "object") {
+      const first = Object.values(body.error as Record<string, unknown>)[0];
+      if (Array.isArray(first) && typeof first[0] === "string") {
+        message = first[0];
+      }
+    }
+  } catch {
+    // fall back to the generic message
+  }
+  return new ApiError(res.status, message);
+}
+
 export type Report = {
   id: string;
   userId: string;
@@ -33,9 +89,65 @@ export async function fetchReports(): Promise<Report[]> {
 
 export async function fetchHeatmap(): Promise<HeatmapArea[]> {
   const res = await fetch(`${API_URL}/heatmap`);
-  if (!res.ok) throw new Error(`Heatmap HTTP ${res.status}`);
+  if (!res.ok) throw new ApiError(res.status, `Heatmap HTTP ${res.status}`);
   const data = await res.json();
   return Array.isArray(data) ? data : [];
+}
+
+export async function fetchContacts(): Promise<TrustedContact[]> {
+  const res = await fetch(`${API_URL}/contacts`, { credentials: "include" });
+  if (!res.ok) throw await readError(res);
+  const data = (await res.json()) as TrustedContact[];
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createContact(input: ContactInput): Promise<TrustedContact> {
+  const res = await fetch(`${API_URL}/contacts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw await readError(res);
+  return (await res.json()) as TrustedContact;
+}
+
+export async function updateContact(
+  id: string,
+  input: ContactInput,
+): Promise<TrustedContact> {
+  const res = await fetch(`${API_URL}/contacts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw await readError(res);
+  return (await res.json()) as TrustedContact;
+}
+
+export async function deleteContact(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/contacts/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) throw await readError(res);
+}
+
+export async function triggerSos(input: {
+  latitude?: number;
+  longitude?: number;
+  batteryLevel?: number;
+  location?: string;
+}): Promise<SosTriggerResult> {
+  const res = await fetch(`${API_URL}/sos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw await readError(res);
+  return (await res.json()) as SosTriggerResult;
 }
 
 export async function reverseGeocode(

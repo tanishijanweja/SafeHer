@@ -6,6 +6,8 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import reportsRouter from "./routes/reports";
 import heatmapRouter from "./routes/heatmap";
+import contactsRouter from "./routes/contacts";
+import sosRouter from "./routes/sos";
 import { generateGeohash } from "./services/geohash";
 import {
   getHistoricalScore,
@@ -32,7 +34,7 @@ app.use(
   "/*",
   cors({
     origin: env.CORS_ORIGIN,
-    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   }),
@@ -119,6 +121,8 @@ app.get("/debug/historical", async (c) => {
 
 app.route("/reports", reportsRouter);
 app.route("/heatmap", heatmapRouter);
+app.route("/contacts", contactsRouter);
+app.route("/sos", sosRouter);
 
 app.get("/debug/news", async (c) => {
   try {
