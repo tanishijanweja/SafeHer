@@ -18,7 +18,7 @@ import { Input } from "@safe-her/ui/components/input";
 import { Label } from "@safe-her/ui/components/label";
 import { Textarea } from "@safe-her/ui/components/textarea";
 
-import { API_URL } from "@/lib/api";
+import { API_URL, reverseGeocode } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
 const SafetyMap = dynamic(() => import("@/components/safety-map"), {
@@ -38,7 +38,18 @@ export default function ReportPage() {
   const [description, setDescription] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [location, setLocation] = useState(DEFAULT_LOCATION);
+  const [address, setAddress] = useState<string | null>(null);
   const [locationDenied, setLocationDenied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    reverseGeocode(location.lat, location.lng).then((addr) => {
+      if (!cancelled) setAddress(addr);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [location]);
 
   useEffect(() => {
     if (!navigator.geolocation) return;
@@ -135,7 +146,7 @@ export default function ReportPage() {
               onMapClick={(lat, lng) => setLocation({ lat, lng })}
             />
             <p className="text-xs text-muted-foreground">
-              Latitude: {location.lat.toFixed(5)}, Longitude: {location.lng.toFixed(5)}
+              {address ? address : "Resolving address..."}
             </p>
           </div>
 

@@ -38,6 +38,23 @@ export async function fetchHeatmap(): Promise<HeatmapArea[]> {
   return Array.isArray(data) ? data : [];
 }
 
+export async function reverseGeocode(
+  lat: number,
+  lng: number,
+): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=16`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { display_name?: string };
+    return data.display_name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function formatCategory(raw: string): string {
   const labels: Record<string, string> = {
     HARASSMENT: "Harassment",
