@@ -56,29 +56,34 @@ export default function ReportPage() {
 
   // GPS stays the default location source. The button below lets the user
   // re-request it at any time (e.g. after they tried manual selection).
-  const requestLocation = useCallback(() => {
-    if (!navigator.geolocation) {
-      setLocationDenied(true);
-      setLocating(false);
-      return;
-    }
-    setLocating(true);
-    setLocationDenied(false);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLocation({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
-        setLocating(false);
-      },
-      () => {
+  const requestLocation = useCallback(
+    (notify = false) => {
+      if (!navigator.geolocation) {
         setLocationDenied(true);
         setLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-    );
-  }, []);
+        return;
+      }
+      setLocating(true);
+      setLocationDenied(false);
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+          setLocating(false);
+          if (notify) toast.success("Location captured");
+        },
+        () => {
+          setLocationDenied(true);
+          setLocating(false);
+          if (notify) toast.error("Could not fetch your location");
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     requestLocation();
@@ -164,7 +169,7 @@ export default function ReportPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={requestLocation}
+                onClick={() => requestLocation(true)}
                 disabled={locating}
                 className="shrink-0"
               >
@@ -189,15 +194,15 @@ export default function ReportPage() {
               onSelect={handleManualSelect}
               placeholder="Search a Delhi locality or address…"
             />
+            <p className="text-xs text-muted-foreground">
+              {address ? address : "Resolving address..."}
+            </p>
             <SafetyMap
               center={location}
               height={320}
               points={[{ lat: location.lat, lng: location.lng }]}
               onMapClick={(lat, lng) => setLocation({ lat, lng })}
             />
-            <p className="text-xs text-muted-foreground">
-              {address ? address : "Resolving address..."}
-            </p>
           </div>
 
           <Button onClick={handleSubmit}>Submit</Button>
