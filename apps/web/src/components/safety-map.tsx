@@ -61,6 +61,13 @@ type SafetyMapProps = {
   /** Floating glass risk legend over the map */
   showLegend?: boolean;
   onMapClick?: (lat: number, lng: number) => void;
+  /** Externally-selected point to highlight (controlled). Falls back to the
+   *  internal click-selection when left undefined. */
+  activePointId?: string | null;
+  /** When set, smoothly flies the map to this view (one-shot per change). */
+  flyToTarget?: { center: { lat: number; lng: number }; zoom: number } | null;
+  /** Fired whenever a point/pin is clicked (used to keep controlled state in sync). */
+  onPointClick?: (id: string) => void;
 };
 
 type HoverCardState = {
@@ -105,38 +112,25 @@ function MapChrome({
   return null;
 }
 
-function ActivePopupOpener({
-  activeId,
-  markerRefs,
+/**
+ * Purely navigational: smoothly flies the map to an externally-requested view.
+ * It does NOT open any popup — that is left to normal user interaction
+ * (hover / click) so a search selection never hijacks the map's popup behaviour.
+ */
+function FlyToController({
+  flyToTarget,
 }: {
-  activeId: string | null;
-  markerRefs: React.MutableRefObject<
-    Map<string, { openPopup: () => void; closePopup: () => void }>
-  >;
+  flyToTarget: { center: { lat: number; lng: number }; zoom: number } | null;
 }) {
   const map = useMap();
   useEffect(() => {
-    if (!activeId) {
-      for (const m of markerRefs.current.values()) {
-        try {
-          m.closePopup();
-        } catch {
-          /* ignore */
-        }
-      }
-      return;
-    }
-    const marker = markerRefs.current.get(activeId);
-    if (!marker) return;
-    const t = window.setTimeout(() => {
-      try {
-        marker.openPopup();
-      } catch {
-        /* ignore */
-      }
-    }, 0);
-    return () => window.clearTimeout(t);
-  }, [activeId, map, markerRefs]);
+    if (!flyToTarget) return;
+    map.flyTo(
+      [flyToTarget.center.lat, flyToTarget.center.lng],
+      flyToTarget.zoom,
+      { duration: 1.2, easeLinearity: 0.25 },
+    );
+  }, [flyToTarget, map]);
   return null;
 }
 
@@ -149,7 +143,6 @@ function PointMarker({
   onDeactivate,
   onHover,
   onHoverEnd,
-  registerMarker,
 }: {
   point: MapPoint;
   id: string;
@@ -159,18 +152,7 @@ function PointMarker({
   onDeactivate: () => void;
   onHover: (id: string, node: React.ReactNode, lat: number, lng: number) => void;
   onHoverEnd: () => void;
-  registerMarker: (
-    id: string,
-    marker: { openPopup: () => void; closePopup: () => void } | null,
-  ) => void;
 }) {
-  const setRef = useCallback(
-    (instance: { openPopup: () => void; closePopup: () => void } | null) => {
-      registerMarker(id, instance);
-    },
-    [id, registerMarker],
-  );
-
   const openDetails = useCallback(
     (e?: LeafletMouseEvent) => {
       e?.originalEvent?.stopPropagation?.();
@@ -203,14 +185,13 @@ function PointMarker({
   const detailPopup = point.popup ? (
     <Popup
       className="safeher-map-popup"
-      maxWidth={280}
-      minWidth={210}
+      maxWidth={380}
       autoPan
       autoPanPadding={[48, 48]}
       keepInView
       closeButton
       autoClose
-      closeOnClick={false}
+      closeOnClick
       closeOnEscapeKey
       eventHandlers={{
         remove: () => {
@@ -225,7 +206,6 @@ function PointMarker({
   if (point.color) {
     return (
       <CircleMarker
-        ref={setRef as never}
         center={[point.lat, point.lng]}
         radius={isActive ? 11 : 8}
         pathOptions={{
@@ -244,7 +224,6 @@ function PointMarker({
 
   return (
     <Marker
-      ref={setRef as never}
       position={[point.lat, point.lng]}
       icon={pinIcon}
       eventHandlers={eventHandlers}
@@ -449,10 +428,22 @@ export default function SafetyMap({
   zoomControl = true,
   showLegend = false,
   onMapClick,
+  activePointId,
+  flyToTarget = null,
+  onPointClick,
 }: SafetyMapProps) {
   const isCoarse = useIsCoarsePointer();
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [internalActiveId, setInternalActiveId] = useState<string | null>(null);
   const [hoveredPoly, setHoveredPoly] = useState<string | null>(null);
+
+  const isControlled = activePointId !== undefined;
+  const resolvedActiveId = isControlled ? activePointId : internalActiveId;
+
+  // Keep internal state aligned with the controlled prop so highlight styling
+  // and popup state don't go stale when the parent clears/reselects.
+  useEffect(() => {
+    if (activePointId !== undefined) setInternalActiveId(activePointId ?? null);
+  }, [activePointId]);
   const [hover, setHover] = useState<HoverCardState | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoverRef = useRef<HoverCardState | null>(null);
@@ -468,17 +459,6 @@ export default function SafetyMap({
   // is always caught and never closes the card.
   const inSourceRef = useRef(false);
   const inCardRef = useRef(false);
-  const markerRefs = useRef<Map<string, { openPopup: () => void; closePopup: () => void }>>(
-    new Map(),
-  );
-
-  const registerMarker = useCallback(
-    (id: string, marker: { openPopup: () => void; closePopup: () => void } | null) => {
-      if (marker) markerRefs.current.set(id, marker);
-      else markerRefs.current.delete(id);
-    },
-    [],
-  );
 
   const cancelHoverOpen = useCallback(() => {
     if (hoverOpenTimer.current) {
@@ -488,14 +468,18 @@ export default function SafetyMap({
     pendingHoverRef.current = null;
   }, []);
 
+  const onPointClickRef = useRef(onPointClick);
+  onPointClickRef.current = onPointClick;
+
   const activate = useCallback(
     (id: string) => {
       cancelHoverOpen();
-      setActiveId(id);
+      setInternalActiveId(id);
+      onPointClickRef.current?.(id);
     },
     [cancelHoverOpen],
   );
-  const deactivate = useCallback(() => setActiveId(null), []);
+  const deactivate = useCallback(() => setInternalActiveId(null), []);
 
   const cancelClose = useCallback(() => {
     if (closeTimer.current) {
@@ -638,32 +622,52 @@ export default function SafetyMap({
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
+        /* The tooltip card renders its own surface, so the Leaflet popup
+           chrome is stripped away — one clean card, no double border. */
         .safeher-map-popup .leaflet-popup-content-wrapper {
-          background: rgba(255,255,255,0.98);
-          border-radius: 14px;
-          box-shadow: 0 12px 40px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.04);
+          background: transparent;
           border: none;
+          border-radius: 0;
+          box-shadow: none;
           padding: 0;
         }
         .safeher-map-popup .leaflet-popup-content {
-          margin: 14px 16px;
+          margin: 0;
+          min-width: 0;
         }
         .safeher-map-popup .leaflet-popup-tip {
           background: #fff;
           box-shadow: none;
         }
+        /* Neutralise Leaflet's global link colour so buttons inside the popup
+           keep their own text colour instead of turning blue. */
+        .safeher-map-popup .leaflet-popup-content a {
+          color: inherit;
+          text-decoration: none;
+        }
         .safeher-map-popup a.leaflet-popup-close-button {
-          top: 8px;
+          z-index: 1200;
+          top: 10px;
           right: 10px;
-          font-size: 18px;
-          color: #a1a1aa;
-          width: 24px;
-          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 26px;
+          height: 26px;
           padding: 0;
-          line-height: 22px;
+          border-radius: 9999px;
+          background: rgba(255,255,255,0.94);
+          border: 1px solid rgba(0,0,0,0.08);
+          box-shadow: 0 1px 6px rgba(0,0,0,0.14);
+          color: #52525b;
+          font-size: 15px;
+          font-weight: 600;
+          line-height: 1;
+          text-align: center;
         }
         .safeher-map-popup a.leaflet-popup-close-button:hover {
           color: #18181b;
+          background: #fff;
         }
         .leaflet-container {
           font-family: inherit;
@@ -727,7 +731,7 @@ export default function SafetyMap({
       >
         <TileLayer attribution={attribution} url={tileUrl} />
         <MapChrome onMapClick={onMapClick} onBackgroundClick={deactivate} />
-        <ActivePopupOpener activeId={activeId} markerRefs={markerRefs} />
+        <FlyToController flyToTarget={flyToTarget} />
 
         {polygons.map((poly) => (
           <AreaPolygon
@@ -746,13 +750,12 @@ export default function SafetyMap({
               key={id}
               id={id}
               point={point}
-              isActive={activeId === id}
+              isActive={resolvedActiveId === id}
               isCoarse={isCoarse}
               onActivate={activate}
               onDeactivate={deactivate}
               onHover={requestHover}
               onHoverEnd={handleSourceLeave}
-              registerMarker={registerMarker}
             />
           );
         })}

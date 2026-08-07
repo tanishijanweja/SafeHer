@@ -167,6 +167,52 @@ export async function reverseGeocode(
   }
 }
 
+export type GeocodeResult = {
+  lat: number;
+  lng: number;
+  displayName: string;
+};
+
+/**
+ * Autocomplete a Delhi locality/address via OSM/Nominatim. Bounded to the NCR
+ * viewbox (same region the DB ingestion uses) so results stay relevant, and
+ * limited to India to keep the result set small and fast.
+ */
+export async function geocodeSearch(
+  query: string,
+  signal?: AbortSignal,
+): Promise<GeocodeResult[]> {
+  const params = new URLSearchParams({
+    q: query,
+    format: "jsonv2",
+    addressdetails: "1",
+    limit: "6",
+    countrycodes: "in",
+    viewbox: "76.70,28.95,77.45,28.25",
+    bounded: "1",
+  });
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+    {
+      headers: { Accept: "application/json" },
+      signal,
+    },
+  );
+  if (!res.ok) throw new Error(`Geocoding HTTP ${res.status}`);
+  const data = (await res.json()) as Array<{
+    lat?: string;
+    lon?: string;
+    display_name?: string;
+  }>;
+  return data
+    .filter((d) => d.lat && d.lon)
+    .map((d) => ({
+      lat: Number(d.lat),
+      lng: Number(d.lon),
+      displayName: d.display_name ?? "",
+    }));
+}
+
 export function formatCategory(raw: string): string {
   const labels: Record<string, string> = {
     HARASSMENT: "Harassment",

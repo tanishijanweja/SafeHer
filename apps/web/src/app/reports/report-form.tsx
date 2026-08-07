@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { Loader2, LocateFixed } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@safe-her/ui/components/button";
@@ -18,7 +19,8 @@ import { Input } from "@safe-her/ui/components/input";
 import { Label } from "@safe-her/ui/components/label";
 import { Textarea } from "@safe-her/ui/components/textarea";
 
-import { API_URL, reverseGeocode } from "@/lib/api";
+import LocationSearch from "@/components/location-search";
+import { API_URL, type GeocodeResult, reverseGeocode } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
 const SafetyMap = dynamic(() => import("@/components/safety-map"), {
@@ -40,6 +42,7 @@ export default function ReportPage() {
   const [location, setLocation] = useState(DEFAULT_LOCATION);
   const [address, setAddress] = useState<string | null>(null);
   const [locationDenied, setLocationDenied] = useState(false);
+  const [locating, setLocating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,18 +54,41 @@ export default function ReportPage() {
     };
   }, [location]);
 
-  useEffect(() => {
-    if (!navigator.geolocation) return;
+  // GPS stays the default location source. The button below lets the user
+  // re-request it at any time (e.g. after they tried manual selection).
+  const requestLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setLocationDenied(true);
+      setLocating(false);
+      return;
+    }
+    setLocating(true);
+    setLocationDenied(false);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setLocation({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
+        setLocating(false);
       },
-      () => setLocationDenied(true),
+      () => {
+        setLocationDenied(true);
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
     );
   }, []);
+
+  useEffect(() => {
+    requestLocation();
+  }, [requestLocation]);
+
+  function handleManualSelect(result: GeocodeResult) {
+    setLocation({ lat: result.lat, lng: result.lng });
+    setAddress(result.displayName);
+    setLocationDenied(false);
+  }
 
   async function handleSubmit() {
     if (!session) {
@@ -133,12 +159,36 @@ export default function ReportPage() {
 
           <div className="flex flex-col gap-1.5">
             <Label>Location</Label>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={requestLocation}
+                disabled={locating}
+                className="shrink-0"
+              >
+                {locating ? (
+                  <Loader2 className="animate-spin" aria-hidden />
+                ) : (
+                  <LocateFixed aria-hidden />
+                )}
+                Use Current Location
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                or search for a place below
+              </span>
+            </div>
             {locationDenied && (
               <p className="text-xs text-red-500">
-                Location access is blocked. Please enable it in your browser, or select a
-                location manually on the map.
+                Location access is blocked. Search for a place below or click the map to
+                select a location manually.
               </p>
             )}
+            <LocationSearch
+              onSelect={handleManualSelect}
+              placeholder="Search a Delhi locality or address…"
+            />
             <SafetyMap
               center={location}
               height={320}
