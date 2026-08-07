@@ -1,5 +1,7 @@
 import { env } from "@safe-her/env/web";
 
+import type { HeatmapArea } from "@/lib/heatmap-areas";
+
 export const API_URL = env.NEXT_PUBLIC_SERVER_URL;
 
 export type ReportConfidence = "UNVERIFIED" | "COMMUNITY_CORROBORATED";
@@ -22,23 +24,6 @@ export type Report = {
   geohash: string;
 };
 
-export type HeatmapCell = {
-  id: string;
-  latitude: number;
-  longitude: number;
-  areaName: string;
-  riskLevel: "Low" | "Medium" | "High";
-  newsIncidentCount: number;
-  communityReportCount: number;
-  recentCategories: string[];
-  reasons: string[];
-  newsArticles?: {
-    title: string;
-    publishedAt: string;
-  }[];
-  lastUpdated: string;
-};
-
 export async function fetchReports(): Promise<Report[]> {
   const res = await fetch(`${API_URL}/reports`);
   if (!res.ok) throw new Error(`Reports HTTP ${res.status}`);
@@ -46,7 +31,7 @@ export async function fetchReports(): Promise<Report[]> {
   return Array.isArray(data) ? data : [];
 }
 
-export async function fetchHeatmap(): Promise<HeatmapCell[]> {
+export async function fetchHeatmap(): Promise<HeatmapArea[]> {
   const res = await fetch(`${API_URL}/heatmap`);
   if (!res.ok) throw new Error(`Heatmap HTTP ${res.status}`);
   const data = await res.json();

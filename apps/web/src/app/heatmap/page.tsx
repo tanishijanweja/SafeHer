@@ -9,7 +9,7 @@ import { cn } from "@safe-her/ui/lib/utils";
 
 import { AreaHoverTooltip, RiskBadge } from "@/components/map-ui";
 import {
-  type HeatmapCell,
+  type HeatmapArea,
   groupCellsIntoAreas,
   riskColor,
 } from "@/lib/heatmap-areas";
@@ -27,7 +27,7 @@ const SafetyMap = dynamic(() => import("@/components/safety-map"), {
 const MAP_CENTER = { lat: 28.61, lng: 77.2 };
 
 export default function HeatmapPage() {
-  const [scores, setScores] = useState<HeatmapCell[]>([]);
+  const [scores, setScores] = useState<HeatmapArea[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {

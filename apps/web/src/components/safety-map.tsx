@@ -72,6 +72,7 @@ type HoverCardState = {
 };
 
 const HOVER_CLOSE_DELAY_MS = 150;
+const HOVER_OPEN_DELAY_MS = 250;
 const HOVER_FADE_MS = 120;
 const HOVER_CARD_WIDTH = 360;
 const HOVER_CARD_MARGIN = 10;
@@ -456,6 +457,11 @@ export default function SafetyMap({
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoverRef = useRef<HoverCardState | null>(null);
   hoverRef.current = hover;
+  // Delays opening the hover card so it only pops after a deliberate dwell on
+  // the exact dot/pin, not on a quick pass-over. Cancelled if the cursor leaves
+  // the source before the delay elapses.
+  const hoverOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingHoverRef = useRef<HoverCardState | null>(null);
   // Track where the cursor currently is so the card only closes once it has
   // left BOTH the hover source (marker/polygon) and the card itself. Refs keep
   // the check synchronous, so a leave that lands directly on the other target
@@ -474,7 +480,21 @@ export default function SafetyMap({
     [],
   );
 
-  const activate = useCallback((id: string) => setActiveId(id), []);
+  const cancelHoverOpen = useCallback(() => {
+    if (hoverOpenTimer.current) {
+      clearTimeout(hoverOpenTimer.current);
+      hoverOpenTimer.current = null;
+    }
+    pendingHoverRef.current = null;
+  }, []);
+
+  const activate = useCallback(
+    (id: string) => {
+      cancelHoverOpen();
+      setActiveId(id);
+    },
+    [cancelHoverOpen],
+  );
   const deactivate = useCallback(() => setActiveId(null), []);
 
   const cancelClose = useCallback(() => {
@@ -503,9 +523,10 @@ export default function SafetyMap({
   }, []);
 
   const handleSourceLeave = useCallback(() => {
+    cancelHoverOpen();
     inSourceRef.current = false;
     triggerClose();
-  }, [triggerClose]);
+  }, [cancelHoverOpen, triggerClose]);
 
   const handleCardEnter = useCallback(() => {
     inCardRef.current = true;
@@ -524,14 +545,24 @@ export default function SafetyMap({
         clearTimeout(closeTimer.current);
         closeTimer.current = null;
       }
-      setHover((prev) => {
-        // Already showing this marker and not closing: skip redundant updates so
-        // React doesn't churn re-renders while the cursor sits still on the pin.
-        if (prev && prev.id === id && !prev.closing) return prev;
-        return { id, node, lat, lng };
-      });
+      // Don't pop instantly on mouse-over: wait for a deliberate dwell on the
+      // exact dot/pin first. Leaving the source cancels the pending open.
+      cancelHoverOpen();
+      pendingHoverRef.current = { id, node, lat, lng };
+      hoverOpenTimer.current = setTimeout(() => {
+        hoverOpenTimer.current = null;
+        const pending = pendingHoverRef.current;
+        pendingHoverRef.current = null;
+        if (!pending) return;
+        setHover((prev) => {
+          // Already showing this marker and not closing: skip redundant updates
+          // so React doesn't churn re-renders while the cursor sits on the pin.
+          if (prev && prev.id === pending.id && !prev.closing) return prev;
+          return pending;
+        });
+      }, HOVER_OPEN_DELAY_MS);
     },
-    [],
+    [cancelHoverOpen],
   );
 
   const onPolyHover = useCallback((id: string) => {

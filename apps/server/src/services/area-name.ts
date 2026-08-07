@@ -1,4 +1,5 @@
-import { DELHI_LOCATIONS } from "@safe-her/db/delhi-locations";
+import { nearestDelhiPlace } from "@safe-her/db/delhi-locations";
+import { isGeohashToken } from "@safe-her/db/news-scoring";
 
 const GENERIC_NAMES = new Set([
   "delhi",
@@ -18,36 +19,14 @@ function isGenericName(name: string | null | undefined): boolean {
   const n = name.trim().toLowerCase();
   if (!n || n.length < 2) return true;
   if (GENERIC_NAMES.has(n)) return true;
-  // Never surface geohash-like tokens
-  if (/^[a-z0-9]{5,12}$/i.test(n) && !n.includes(" ")) return true;
+  // Only drop strings that are genuinely raw geohash tokens ("ttnf6u"), so real
+  // single-word locality names like "Chhatarpur"/"Dwarka"/"Rohini" are kept.
+  if (isGeohashToken(n)) return true;
   if (/^area\s+/i.test(n)) return true;
   return false;
 }
 
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const dlat = (lat1 - lat2) * 111;
-  const dlng = (lng1 - lng2) * 111 * Math.cos((lat1 * Math.PI) / 180);
-  return Math.sqrt(dlat * dlat + dlng * dlng);
-}
-
-/** Nearest named Delhi locality from the gazetteer */
-export function nearestDelhiPlace(
-  lat: number,
-  lng: number,
-): { name: string; km: number } {
-  let bestName = "Connaught Place";
-  let bestKm = Infinity;
-
-  for (const [name, coords] of Object.entries(DELHI_LOCATIONS)) {
-    const km = haversineKm(lat, lng, coords.lat, coords.lng);
-    if (km < bestKm) {
-      bestKm = km;
-      bestName = name;
-    }
-  }
-
-  return { name: bestName, km: bestKm };
-}
+export { nearestDelhiPlace };
 
 /**
  * Human-readable area label. Never returns a geohash.

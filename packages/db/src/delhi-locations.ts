@@ -98,3 +98,35 @@ export const DELHI_LOCATIONS: Record<string, { lat: number; lng: number }> = {
   "Dwarka Sector 10": { lat: 28.5789, lng: 77.0544 },
   "Dwarka Sector 12": { lat: 28.5837, lng: 77.0406 },
 };
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(a));
+}
+
+/**
+ * Nearest named Delhi locality from the gazetteer. Shared by the server's area
+ * resolution AND the heatmap news selector so both agree on locality identity.
+ */
+export function nearestDelhiPlace(
+  lat: number,
+  lng: number,
+): { name: string; km: number } {
+  let bestName = "Connaught Place";
+  let bestKm = Infinity;
+
+  for (const [name, coords] of Object.entries(DELHI_LOCATIONS)) {
+    const km = haversineKm(lat, lng, coords.lat, coords.lng);
+    if (km < bestKm) {
+      bestKm = km;
+      bestName = name;
+    }
+  }
+
+  return { name: bestName, km: bestKm };
+}

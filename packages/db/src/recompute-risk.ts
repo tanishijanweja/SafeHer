@@ -1,22 +1,19 @@
 import type { PrismaClient } from "../prisma/generated/client";
 
+import ngeohash from "ngeohash";
+
 import {
+  type HeatmapNewsRow,
+  HEATMAP_NEWS_RADIUS_KM,
   MIN_NEWS_PREFIX_LEN,
   NEWS_WINDOW_DAYS,
-  newsRecencyWeight,
-  normalizeNewsScore,
+  commonPrefixLen,
+  distanceKm,
+  newsScoreFromRows,
+  selectHeatmapNews,
 } from "./news-scoring";
 
 const LIVE_WINDOW_DAYS = 30;
-
-function commonPrefixLen(a: string, b: string): number {
-  const limit = Math.min(a.length, b.length);
-  let i = 0;
-  for (; i < limit; i++) {
-    if (a[i] !== b[i]) break;
-  }
-  return i;
-}
 
 function liveRecencyWeight(createdAt: Date, now: Date): number {
   const ageDays = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
@@ -31,20 +28,13 @@ function liveRecencyWeight(createdAt: Date, now: Date): number {
 export async function computeNewsScore(
   prisma: PrismaClient,
   geohash: string,
-  cached?: Array<{
-    geohash: string;
-    publishedAt: Date;
-    severity: number;
-    confidence: number;
-    affectsHeatmap: boolean;
-  }>,
+  cached?: HeatmapNewsRow[],
 ): Promise<number> {
-  const now = Date.now();
-  const nowDate = new Date(now);
+  const now = new Date();
 
   let rows = cached;
   if (!rows) {
-    const cutoff = new Date(now - NEWS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const cutoff = new Date(now.getTime() - NEWS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     rows = await prisma.newsIncident.findMany({
       where: {
         publishedAt: { gte: cutoff },
@@ -52,39 +42,21 @@ export async function computeNewsScore(
       },
       select: {
         geohash: true,
+        latitude: true,
+        longitude: true,
         publishedAt: true,
         severity: true,
         confidence: true,
         affectsHeatmap: true,
+        localityName: true,
+        dedupeKey: true,
+        url: true,
+        sourceDomain: true,
       },
     });
   }
 
-  let bestScore = 0;
-  let bestPrefixLen = 0;
-
-  for (const row of rows) {
-    if (!row.affectsHeatmap) continue;
-    const prefixLen = commonPrefixLen(geohash, row.geohash);
-    if (prefixLen < MIN_NEWS_PREFIX_LEN) continue;
-
-    const rw = newsRecencyWeight(row.publishedAt, nowDate);
-    if (rw <= 0) continue;
-
-    const sev = Math.min(Math.max(row.severity || 3, 1), 5) / 5;
-    const conf = Math.min(Math.max(row.confidence || 0.5, 0), 1);
-    const weight = rw * sev * conf;
-
-    if (prefixLen > bestPrefixLen) {
-      bestPrefixLen = prefixLen;
-      bestScore = 0;
-    }
-    if (prefixLen === bestPrefixLen) {
-      bestScore += weight;
-    }
-  }
-
-  return normalizeNewsScore(bestScore);
+  return newsScoreFromRows(selectHeatmapNews(geohash, rows, now), now);
 }
 
 export async function computeHistoricalScore(
@@ -146,13 +118,7 @@ export function combineScores(historical: number, live: number, news: number): n
 export async function refreshRiskScoreForGeohash(
   prisma: PrismaClient,
   geohash: string,
-  newsCache?: Array<{
-    geohash: string;
-    publishedAt: Date;
-    severity: number;
-    confidence: number;
-    affectsHeatmap: boolean;
-  }>,
+  newsCache?: HeatmapNewsRow[],
 ) {
   const [historicalScore, newsScore, live] = await Promise.all([
     computeHistoricalScore(prisma, geohash),
@@ -194,15 +160,43 @@ export async function recomputeRiskForGeohashes(
     where: { publishedAt: { gte: cutoff }, affectsHeatmap: true },
     select: {
       geohash: true,
+      latitude: true,
+      longitude: true,
       publishedAt: true,
       severity: true,
       confidence: true,
       affectsHeatmap: true,
+      localityName: true,
+      dedupeKey: true,
+      url: true,
+      sourceDomain: true,
     },
   });
 
+  // A news incident at geohash N can affect EVERY cell whose centre lies within
+  // HEATMAP_NEWS_RADIUS_KM of N (the selector's hard geo bound). The popup shows
+  // the same incidents, so refresh all of them or adjacent cells would display
+  // news their stale score never counted.
+  const targets = new Set(unique);
+  if (newsCache.length > 0) {
+    const touchedCentres = [...unique].map((gh) => ngeohash.decode(gh));
+    const cells = await prisma.riskScore.findMany({ select: { geohash: true } });
+    for (const cell of cells) {
+      const cc = ngeohash.decode(cell.geohash);
+      for (const tc of touchedCentres) {
+        if (
+          distanceKm(cc.latitude, cc.longitude, tc.latitude, tc.longitude) <=
+          HEATMAP_NEWS_RADIUS_KM
+        ) {
+          targets.add(cell.geohash);
+          break;
+        }
+      }
+    }
+  }
+
   let n = 0;
-  for (const gh of unique) {
+  for (const gh of targets) {
     await refreshRiskScoreForGeohash(prisma, gh, newsCache);
     n++;
   }

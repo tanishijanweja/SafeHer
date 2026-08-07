@@ -22,6 +22,65 @@ const RISK_BADGE: Record<
 
 const NEWSLIST_PREVIEW = 3;
 
+const SOURCE_BADGE = {
+  news: {
+    emoji: "📰",
+    label: "News Article",
+    cls: "bg-blue-500/10 text-blue-700 ring-blue-500/20",
+  },
+  community: {
+    emoji: "👥",
+    label: "Community Report",
+    cls: "bg-amber-500/10 text-amber-800 ring-amber-500/20",
+  },
+  historical: {
+    emoji: "📊",
+    label: "Historical Data",
+    cls: "bg-emerald-500/10 text-emerald-800 ring-emerald-500/20",
+  },
+} as const;
+
+function SourceBadge({
+  type,
+  label,
+}: {
+  type: keyof typeof SOURCE_BADGE;
+  label?: string;
+}) {
+  const s = SOURCE_BADGE[type];
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9.5px] font-bold tracking-wide ring-1",
+        s.cls,
+      )}
+    >
+      <span aria-hidden>{s.emoji}</span>
+      {label ?? s.label}
+    </span>
+  );
+}
+
+/**
+ * Returns the URL only when it is a genuinely external http(s) link that can be
+ * opened in a new tab. Anything else — relative paths, `seed://`/`/seed/…`
+ * synthetic links, empty/malformed values — is treated as invalid and returns
+ * null so we never render a "Read Article" button that navigates locally.
+ */
+function externalArticleUrl(url?: string | null): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url, "https://safeher.local");
+    // Reject any scheme that is not real web navigation, plus anything that
+    // resolved to a local route (fell back to the base origin).
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    if (parsed.origin === "https://safeher.local") return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
 export function RiskBadge({ level, compact }: { level: RiskLevel; compact?: boolean }) {
   const styles =
     level === "High"
@@ -55,7 +114,7 @@ export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
   const hasMoreNews = allNews.length > NEWSLIST_PREVIEW;
 
   return (
-    <div className="safeher-hover-card-inner flex max-h-[min(450px,calc(100vh-16px))] w-[360px] max-w-full flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-zinc-900 shadow-[0_18px_50px_rgba(24,24,27,0.18),0_0_0_1px_rgba(24,24,27,0.04)]">
+    <div className="safeher-hover-card-inner flex max-h-[min(450px,calc(100dvh-16px))] w-[min(360px,88vw)] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-zinc-900 shadow-[0_18px_50px_rgba(24,24,27,0.18),0_0_0_1px_rgba(24,24,27,0.04)]">
       <div className="shrink-0 border-b border-zinc-100 px-4 pb-3 pt-4">
         <div className="flex items-start justify-between gap-3">
           <h3 className="text-[15px] leading-snug font-bold tracking-tight">
@@ -120,10 +179,31 @@ export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
               {visibleNews.map((article) => (
                 <li
                   key={article.title}
-                  className="flex flex-col gap-0.5 rounded-lg bg-zinc-50 px-2.5 py-1.5 ring-1 ring-zinc-100"
+                  className="flex flex-col gap-1 rounded-lg bg-zinc-50 px-2.5 py-2 ring-1 ring-zinc-100"
                 >
+                  <div className="flex items-start justify-between gap-2">
+                    <SourceBadge type="news" />
+                    {(() => {
+                      const url = externalArticleUrl(article.url);
+                      return url ? (
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+                        >
+                          Read Article
+                        </a>
+                      ) : null;
+                    })()}
+                  </div>
                   <span className="line-clamp-2 text-zinc-800">{article.title}</span>
                   <span className="text-[10.5px] font-medium text-zinc-400">
+                    {article.sourceDomain ? (
+                      <span className="font-semibold text-zinc-500">
+                        {article.sourceDomain} •{" "}
+                      </span>
+                    ) : null}
                     {formatDateTime(article.publishedAt)}
                   </span>
                 </li>
@@ -138,10 +218,31 @@ export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
                       {allNews.slice(NEWSLIST_PREVIEW).map((article) => (
                         <li
                           key={article.title}
-                          className="flex flex-col gap-0.5 rounded-lg bg-zinc-50 px-2.5 py-1.5 ring-1 ring-zinc-100"
+                          className="flex flex-col gap-1 rounded-lg bg-zinc-50 px-2.5 py-2 ring-1 ring-zinc-100"
                         >
+                          <div className="flex w-full items-start justify-between gap-2">
+                            <SourceBadge type="news" />
+                            {(() => {
+                              const url = externalArticleUrl(article.url);
+                              return url ? (
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+                                >
+                                  Read Article
+                                </a>
+                              ) : null;
+                            })()}
+                          </div>
                           <span className="line-clamp-2 text-zinc-800">{article.title}</span>
                           <span className="text-[10.5px] font-medium text-zinc-400">
+                            {article.sourceDomain ? (
+                              <span className="font-semibold text-zinc-500">
+                                {article.sourceDomain} •{" "}
+                              </span>
+                            ) : null}
                             {formatDateTime(article.publishedAt)}
                           </span>
                         </li>
@@ -160,6 +261,74 @@ export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
                 </button>
               </div>
             )}
+          </section>
+        )}
+
+        {area.communityReports.length > 0 && (
+          <section>
+            <h4 className="mb-1.5 text-[10px] font-bold tracking-[0.14em] text-zinc-400 uppercase">
+              Community Reports
+            </h4>
+            <ul className="space-y-2.5 text-[12px] leading-snug">
+              {area.communityReports.slice(0, 3).map((r) => (
+                <li
+                  key={r.title}
+                  className="flex flex-col gap-1 rounded-lg bg-zinc-50 px-2.5 py-2 ring-1 ring-zinc-100"
+                >
+                  <SourceBadge type="community" />
+                  <span className="line-clamp-2 text-zinc-800">{r.title}</span>
+                  <span className="text-[10.5px] font-medium text-zinc-400">
+                    {r.category ? (
+                      <span className="font-semibold text-zinc-500">{r.category} • </span>
+                    ) : null}
+                    {formatDateTime(r.createdAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {area.historicalDistrict && (
+          <section>
+            <h4 className="mb-1.5 text-[10px] font-bold tracking-[0.14em] text-zinc-400 uppercase">
+              Historical Data
+            </h4>
+            <ul className="space-y-2.5 text-[12px] leading-snug">
+              <li className="flex flex-col gap-1 rounded-lg bg-zinc-50 px-2.5 py-2 ring-1 ring-zinc-100">
+                <SourceBadge type="historical" />
+                <span className="text-zinc-800">
+                  {area.historicalDistrict}
+                  {area.historicalSource ? (
+                    <span className="font-medium text-zinc-400">
+                      {" "}· {area.historicalSource}
+                    </span>
+                  ) : null}
+                </span>
+              </li>
+            </ul>
+          </section>
+        )}
+
+        {area.demoHistorical && area.demoHistorical.length > 0 && (
+          <section>
+            <h4 className="mb-1.5 text-[10px] font-bold tracking-[0.14em] text-zinc-400 uppercase">
+              Demo Historical Data
+            </h4>
+            <ul className="space-y-1.5">
+              {area.demoHistorical.map((d) => (
+                <li
+                  key={d.title}
+                  className="flex flex-col gap-0.5 rounded-lg bg-zinc-50 px-2.5 py-2 ring-1 ring-zinc-100"
+                >
+                  <SourceBadge type="historical" label="Demo" />
+                  <span className="text-[12px] leading-snug text-zinc-800">{d.title}</span>
+                  <span className="text-[10.5px] font-medium text-zinc-400">
+                    {formatDateTime(d.date)}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </section>
         )}
 

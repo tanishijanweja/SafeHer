@@ -25,7 +25,7 @@ import {
 } from "@/lib/api";
 import { AreaHoverTooltip } from "@/components/map-ui";
 import {
-  type HeatmapCell,
+  type HeatmapArea,
   groupCellsIntoAreas,
   riskColor,
 } from "@/lib/heatmap-areas";
@@ -151,7 +151,7 @@ function ConfidenceBadge({ level }: { level: Report["confidenceLevel"] }) {
 
 export default function Home() {
   const [reports, setReports] = useState<Report[]>([]);
-  const [heatmap, setHeatmap] = useState<HeatmapCell[]>([]);
+  const [heatmap, setHeatmap] = useState<HeatmapArea[]>([]);
   const [usingDemo, setUsingDemo] = useState(false);
 
   useEffect(() => {

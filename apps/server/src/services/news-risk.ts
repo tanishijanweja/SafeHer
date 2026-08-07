@@ -1,20 +1,12 @@
 import prisma from "@safe-her/db";
 import {
-  MAX_INCIDENTS_FOR_FULL_SCORE,
-  MIN_NEWS_PREFIX_LEN,
   NEWS_WINDOW_DAYS,
-  newsRecencyWeight,
-  normalizeNewsScore,
+  newsScoreFromRows,
+  selectHeatmapNews,
+  type HeatmapNewsRow,
 } from "@safe-her/db/news-scoring";
 
-interface CachedNewsRow {
-  geohash: string;
-  publishedAt: Date;
-  severity: number;
-  confidence: number;
-}
-
-let cachedNews: CachedNewsRow[] | null = null;
+let cachedNews: HeatmapNewsRow[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
@@ -35,47 +27,24 @@ export async function getNewsDerivedScore(geohash: string): Promise<number> {
       },
       select: {
         geohash: true,
+        latitude: true,
+        longitude: true,
         publishedAt: true,
         severity: true,
         confidence: true,
+        affectsHeatmap: true,
+        localityName: true,
+        dedupeKey: true,
+        url: true,
+        sourceDomain: true,
       },
     });
     cacheTimestamp = now;
   }
 
-  if (cachedNews.length === 0) return 0;
-
-  const nowDate = new Date(now);
-  let bestScore = 0;
-  let bestPrefixLen = 0;
-
-  for (const row of cachedNews) {
-    let prefixLen = 0;
-    const limit = Math.min(geohash.length, row.geohash.length);
-    for (let i = 0; i < limit; i++) {
-      if (geohash[i] === row.geohash[i]) prefixLen++;
-      else break;
-    }
-    if (prefixLen < MIN_NEWS_PREFIX_LEN) continue;
-
-    const rw = newsRecencyWeight(row.publishedAt, nowDate);
-    if (rw <= 0) continue;
-
-    const sev = Math.min(Math.max(row.severity || 3, 1), 5) / 5;
-    const conf = Math.min(Math.max(row.confidence || 0.5, 0), 1);
-    const weight = rw * sev * conf;
-
-    if (prefixLen > bestPrefixLen) {
-      bestPrefixLen = prefixLen;
-      bestScore = 0;
-    }
-
-    if (prefixLen === bestPrefixLen) {
-      bestScore += weight;
-    }
-  }
-
-  return normalizeNewsScore(bestScore);
+  const rows = selectHeatmapNews(geohash, cachedNews, new Date(now));
+  return newsScoreFromRows(rows, new Date(now));
 }
 
-export { NEWS_WINDOW_DAYS, MAX_INCIDENTS_FOR_FULL_SCORE, MIN_NEWS_PREFIX_LEN };
+export { NEWS_WINDOW_DAYS }; // keep signature imports stable
+export { MAX_INCIDENTS_FOR_FULL_SCORE, MIN_NEWS_PREFIX_LEN } from "@safe-her/db/news-scoring";
