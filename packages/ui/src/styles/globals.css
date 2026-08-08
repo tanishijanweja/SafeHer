@@ -133,6 +133,20 @@
   --animate-marquee: marquee 25s linear infinite;
 }
 
+.safeher-ring {
+  animation: safeher-ring 1.6s ease-out infinite;
+}
+@keyframes safeher-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.65);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -25,7 +25,7 @@ export type NotifiedContact = {
   contactId: string;
   name: string;
   phone: string;
-  channel: "sms";
+  channel: "sms" | "email";
   delivered: boolean;
 };
 
@@ -139,6 +139,7 @@ export async function triggerSos(input: {
   longitude?: number;
   batteryLevel?: number;
   location?: string;
+  emergencyMessage?: string;
 }): Promise<SosTriggerResult> {
   const res = await fetch(`${API_URL}/sos`, {
     method: "POST",
