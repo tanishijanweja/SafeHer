@@ -24,6 +24,7 @@ import {
   severityLabel,
 } from "@/lib/api";
 import { AreaHoverTooltip } from "@/components/map-ui";
+import HelplineMarquee from "@/components/helpline-marquee";
 import LoginPrompt from "@/components/login-prompt";
 import TrustedContactsOnboarding from "@/components/trusted-contacts-onboarding";
 import {
@@ -215,6 +216,8 @@ export default function Home() {
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_80%_60%_at_10%_0%,oklch(0.92_0.05_350),transparent_55%),radial-gradient(ellipse_70%_50%_at_90%_10%,oklch(0.94_0.04_20),transparent_50%),radial-gradient(ellipse_60%_40%_at_50%_100%,oklch(0.95_0.03_350),transparent_55%)]"
       />
+
+      <HelplineMarquee />
 
       <LoginPrompt />
 
