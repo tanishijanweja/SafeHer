@@ -18,6 +18,13 @@ export default function ReportsPage() {
 
   useEffect(() => {
     try {
+      const params = new URLSearchParams(window.location.search);
+      const fromQuery = params.get("view");
+      if (fromQuery === "report" || fromQuery === "feed") {
+        setView(fromQuery);
+        localStorage.setItem(VIEW_KEY, fromQuery);
+        return;
+      }
       const saved = localStorage.getItem(VIEW_KEY);
       if (saved === "report" || saved === "feed") setView(saved);
     } catch {

@@ -185,13 +185,6 @@ export default function Home() {
   const recent = displayReports.slice(0, 3);
 
   const totalReports = displayReports.length;
-  const verifiedCount = displayReports.filter(
-    (r) => r.confidenceLevel === "COMMUNITY_CORROBORATED",
-  ).length;
-  const avgSeverity =
-    totalReports === 0
-      ? 0
-      : displayReports.reduce((s, r) => s + (r.severity || 0), 0) / totalReports;
 
   const areas = useMemo(() => groupCellsIntoAreas(heatmap), [heatmap]);
 
@@ -269,10 +262,6 @@ export default function Home() {
                 <span className="size-2 rounded-full bg-rose-400" />
                 {liveHotspotCount} live hotspots
               </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-emerald-500" />
-                {verifiedCount} verified
-              </span>
             </div>
           </div>
 
@@ -312,22 +301,6 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-8 sm:px-6">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <StatCard label="Total reports" value={String(totalReports)} tone="pink" />
-          <StatCard
-            label="Community verified"
-            value={String(verifiedCount)}
-            tone="green"
-          />
-          <StatCard
-            label="Avg severity (1–5)"
-            value={avgSeverity ? avgSeverity.toFixed(1) : "—"}
-            tone="orange"
-          />
-        </div>
-      </section>
-
       <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
         <h2 className="mb-6 text-center text-xs font-semibold tracking-[0.18em] text-foreground uppercase">
           How SafeHer works
@@ -360,7 +333,7 @@ export default function Home() {
             Recent reports
           </h2>
           <Link
-            href="/reports"
+            href="/reports?view=feed"
             className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80"
           >
             View all
@@ -409,32 +382,6 @@ export default function Home() {
         </div>
       </section>
     </main>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: "pink" | "green" | "orange";
-}) {
-  const valueClass =
-    tone === "pink"
-      ? "text-primary"
-      : tone === "green"
-        ? "text-safeher-verified"
-        : "text-safeher-severity";
-
-  return (
-    <div className="rounded-2xl bg-card/75 px-5 py-5 shadow-sm ring-1 ring-border/50 backdrop-blur-sm">
-      <div className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-        {label}
-      </div>
-      <div className={cn("mt-2 text-3xl font-bold tracking-tight", valueClass)}>{value}</div>
-    </div>
   );
 }
 
