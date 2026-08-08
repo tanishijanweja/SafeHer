@@ -168,6 +168,160 @@ export async function reverseGeocode(
   }
 }
 
+export type GeocodeResult = {
+  lat: number;
+  lng: number;
+  displayName: string;
+};
+
+/** Approximate Delhi-NCR centre used to prioritise results for the app's region. */
+const NCR_CENTER = { lat: 28.6139, lng: 77.209 };
+/** Radius around the NCR centre where localities are treated as "NCR & nearby". */
+const NCR_RADIUS_KM = 100;
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Best-effort user location, fetched lazily and cached (never blocks a search).
+// Used to bias results "near me" when the geolocation permission is granted.
+let cachedUserLoc: { lat: number; lng: number } | null | undefined;
+function userBias(): { lat: number; lng: number } {
+  if (cachedUserLoc !== undefined) return cachedUserLoc ?? NCR_CENTER;
+  cachedUserLoc = null;
+  try {
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          cachedUserLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        },
+        () => {
+          cachedUserLoc = null;
+        },
+        { enableHighAccuracy: true, timeout: 4000, maximumAge: 600000 },
+      );
+    }
+  } catch {
+    cachedUserLoc = null;
+  }
+  return NCR_CENTER;
+}
+
+/**
+ * Rank results: NCR & nearby always first, then every other Indian state, each
+ * group sorted by proximity to the user's location when known (else the NCR).
+ */
+function rankByProximity(results: GeocodeResult[]): GeocodeResult[] {
+  const bias = userBias();
+  const dist = (r: GeocodeResult) =>
+    haversineKm(r.lat, r.lng, bias.lat, bias.lng);
+  return [...results].sort((a, b) => {
+    const aIn = haversineKm(a.lat, a.lng, NCR_CENTER.lat, NCR_CENTER.lng) <= NCR_RADIUS_KM;
+    const bIn = haversineKm(b.lat, b.lng, NCR_CENTER.lat, NCR_CENTER.lng) <= NCR_RADIUS_KM;
+    if (aIn !== bIn) return aIn ? -1 : 1;
+    return dist(a) - dist(b);
+  });
+}
+
+type NominatimItem = { lat?: string; lon?: string; display_name?: string };
+
+async function searchPhotons(query: string, signal?: AbortSignal): Promise<GeocodeResult[]> {
+  // Photon/Komoot — keyless, biased to the NCR by passing its coordinates (the
+  // POI/building coverage is richer than plain Nominatim and it browse OSM POIs).
+  const params = new URLSearchParams({
+    q: query,
+    limit: "10",
+    lat: String(NCR_CENTER.lat),
+    lon: String(NCR_CENTER.lng),
+    lang: "en",
+  });
+  const res = await fetch(`https://photon.komoot.io/api/?${params.toString()}`, { signal });
+  if (!res.ok) throw new Error(`Photon HTTP ${res.status}`);
+  const data = (await res.json()) as {
+    features?: Array<{
+      geometry?: { coordinates?: [number, number] };
+      properties?: {
+        name?: string | null;
+        street?: string | null;
+        housenumber?: string | null;
+        city?: string | null;
+        state?: string | null;
+        country?: string | null;
+        countrycode?: string | null;
+        postcode?: string | null;
+      };
+    }>;
+  };
+  return (data.features ?? []).flatMap<GeocodeResult>((f) => {
+    const p = f.properties ?? {};
+    // Only keep results in India; drop every other country.
+    const countryName = p.country ?? "";
+    if (p.countrycode?.toUpperCase() !== "IN" && !/india/i.test(countryName)) return [];
+    const [lng, lat] = f.geometry?.coordinates ?? [NaN, NaN];
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
+    const street = [p.housenumber, p.street].filter(Boolean).join(" ");
+    const displayName = [p.name, street, p.city, p.state, p.country]
+      .map((s) => s?.trim())
+      .filter((s): s is string => Boolean(s))
+      .join(", ");
+    if (!displayName) return [];
+    return [{ lat, lng, displayName }];
+  });
+}
+
+async function searchNominatim(query: string, signal?: AbortSignal): Promise<GeocodeResult[]> {
+  const params = new URLSearchParams({
+    q: query,
+    format: "jsonv2",
+    addressdetails: "1",
+    limit: "8",
+    countrycodes: "in",
+  });
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+    { headers: { Accept: "application/json" }, signal },
+  );
+  if (!res.ok) throw new Error(`Geocoding HTTP ${res.status}`);
+  const data = (await res.json()) as NominatimItem[];
+  return data
+    .filter((d) => d.lat && d.lon)
+    .map((d) => ({
+      lat: Number(d.lat),
+      lng: Number(d.lon),
+      displayName: d.display_name ?? "",
+    }));
+}
+
+/**
+ * Autocomplete a location restricted to India. Tries Photon first (better
+ * POI/buildings, keyless), falls back to Nominatim (already `countrycodes=in`).
+ * Results are ranked so NCR & nearby come first, then other Indian states —
+ * sorted by proximity to the user's location when known, else the NCR. Results
+ * from other countries are filtered out entirely.
+ */
+export async function geocodeSearch(
+  query: string,
+  signal?: AbortSignal,
+): Promise<GeocodeResult[]> {
+  try {
+    const results = await searchPhotons(query, signal);
+    if (signal?.aborted) return [];
+    if (results.length > 0) return rankByProximity(results);
+  } catch (e) {
+    if (signal?.aborted) return [];
+    // fall through to Nominatim
+  }
+  const results = await searchNominatim(query, signal);
+  return rankByProximity(results);
+}
+
 export function formatCategory(raw: string): string {
   const labels: Record<string, string> = {
     HARASSMENT: "Harassment",

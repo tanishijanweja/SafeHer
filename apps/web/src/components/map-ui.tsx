@@ -6,6 +6,7 @@ import { cn } from "@safe-her/ui/lib/utils";
 
 import {
   type AreaRegion,
+  type NewsArticleRef,
   type RiskLevel,
   formatDateTime,
   riskColor,
@@ -67,6 +68,43 @@ function SourceBadge({
  * synthetic links, empty/malformed values — is treated as invalid and returns
  * null so we never render a "Read Article" button that navigates locally.
  */
+/**
+ * External news link button. Uses `!text-white` so Leaflet's default
+ * `.leaflet-container a { color: #0078a8 }` rule can't turn the label blue on
+ * its blue background when the card is rendered inside a map popup.
+ */
+function ReadStoryLink({ url }: { url: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex shrink-0 items-center gap-1 self-start rounded-lg bg-blue-600 px-2.5 py-1 text-[10px] leading-none font-semibold !text-white shadow-sm transition-colors hover:bg-blue-700"
+    >
+      Read Story
+    </a>
+  );
+}
+
+function NewsItem({ article }: { article: NewsArticleRef }) {
+  const url = externalArticleUrl(article.url);
+  return (
+    <li className="flex flex-col gap-1 rounded-lg bg-zinc-50 px-2.5 py-2 ring-1 ring-zinc-100">
+      <div className="flex items-center justify-between gap-3">
+        <SourceBadge type="news" />
+        {url ? <ReadStoryLink url={url} /> : null}
+      </div>
+      <span className="line-clamp-2 text-zinc-800">{article.title}</span>
+      <span className="text-[10.5px] font-medium text-zinc-400">
+        {article.sourceDomain ? (
+          <span className="font-semibold text-zinc-500">{article.sourceDomain} • </span>
+        ) : null}
+        {formatDateTime(article.publishedAt)}
+      </span>
+    </li>
+  );
+}
+
 function externalArticleUrl(url?: string | null): string | null {
   if (!url) return null;
   try {
@@ -110,7 +148,7 @@ export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
   const [showAllNews, setShowAllNews] = useState(false);
   const badge = RISK_BADGE[area.riskLevel];
   const allNews = area.newsArticles;
-  const visibleNews = showAllNews ? allNews : allNews.slice(0, NEWSLIST_PREVIEW);
+  const visibleNews = allNews.slice(0, NEWSLIST_PREVIEW);
   const hasMoreNews = allNews.length > NEWSLIST_PREVIEW;
 
   return (
@@ -177,36 +215,7 @@ export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
             </h4>
             <ul className="space-y-2.5 text-[12px] leading-snug">
               {visibleNews.map((article) => (
-                <li
-                  key={article.title}
-                  className="flex flex-col gap-1 rounded-lg bg-zinc-50 px-2.5 py-2 ring-1 ring-zinc-100"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <SourceBadge type="news" />
-                    {(() => {
-                      const url = externalArticleUrl(article.url);
-                      return url ? (
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
-                        >
-                          Read Article
-                        </a>
-                      ) : null;
-                    })()}
-                  </div>
-                  <span className="line-clamp-2 text-zinc-800">{article.title}</span>
-                  <span className="text-[10.5px] font-medium text-zinc-400">
-                    {article.sourceDomain ? (
-                      <span className="font-semibold text-zinc-500">
-                        {article.sourceDomain} •{" "}
-                      </span>
-                    ) : null}
-                    {formatDateTime(article.publishedAt)}
-                  </span>
-                </li>
+                <NewsItem key={article.title} article={article} />
               ))}
             </ul>
 
@@ -216,36 +225,7 @@ export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
                   <div className="safeher-hover-news-scroll max-h-[150px] overflow-y-auto">
                     <ul className="space-y-2.5 text-[12px] leading-snug">
                       {allNews.slice(NEWSLIST_PREVIEW).map((article) => (
-                        <li
-                          key={article.title}
-                          className="flex flex-col gap-1 rounded-lg bg-zinc-50 px-2.5 py-2 ring-1 ring-zinc-100"
-                        >
-                          <div className="flex w-full items-start justify-between gap-2">
-                            <SourceBadge type="news" />
-                            {(() => {
-                              const url = externalArticleUrl(article.url);
-                              return url ? (
-                                <a
-                                  href={url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
-                                >
-                                  Read Article
-                                </a>
-                              ) : null;
-                            })()}
-                          </div>
-                          <span className="line-clamp-2 text-zinc-800">{article.title}</span>
-                          <span className="text-[10.5px] font-medium text-zinc-400">
-                            {article.sourceDomain ? (
-                              <span className="font-semibold text-zinc-500">
-                                {article.sourceDomain} •{" "}
-                              </span>
-                            ) : null}
-                            {formatDateTime(article.publishedAt)}
-                          </span>
-                        </li>
+                        <NewsItem key={article.title} article={article} />
                       ))}
                     </ul>
                   </div>
@@ -283,6 +263,11 @@ export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
                     ) : null}
                     {formatDateTime(r.createdAt)}
                   </span>
+                  {r.incidentDate ? (
+                    <span className="text-[10px] font-medium text-amber-600">
+                      Incident: {formatDateTime(r.incidentDate)}
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ul>

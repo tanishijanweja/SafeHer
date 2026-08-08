@@ -14,6 +14,7 @@ export type CommunityReportRef = {
   description?: string | null;
   category?: string | null;
   createdAt: string;
+  incidentDate?: string | null;
 };
 
 export type DemoHistoricalIncidentRef = {
@@ -134,6 +135,100 @@ export function groupCellsIntoAreas(areas: HeatmapArea[]): AreaRegion[] {
       center: area.center ?? { lat: 0, lng: 0 },
     }))
     .sort((a, b) => riskRank(a.riskLevel) - riskRank(b.riskLevel));
+}
+
+/**
+ * True when a locality actually has something useful to show, using the real
+ * backend fields (not the display-layer). A card is only worth rendering when
+ * it has news, community reports, incident tags, real historical/demo data, or
+ * a genuine risk explanation. The "No community reports" reason is boilerplate
+ * injected by `buildSimpleReasons` and is never treated as content on its own.
+ */
+export function hasMeaningfulAreaData(area: AreaRegion): boolean {
+  if (area.newsArticles.length > 0) return true;
+  if (area.communityReports.length > 0) return true;
+  if ((area.recentCategories ?? []).length > 0) return true;
+  if (area.historicalDistrict && area.historicalDistrict.length > 0) return true;
+  if ((area.demoHistorical ?? []).length > 0) return true;
+  return area.reasons.some((reason) => reason.trim() !== "No community reports");
+}
+
+/**
+ * Ray-casting point-in-polygon test against a Leaflet ring ([lat, lng][]).
+ * Reused to decide whether a searched coordinate falls inside a locality's
+ * risk polygon without duplicating the server's geohash geometry.
+ */
+export function pointInPolygon(
+  point: { lat: number; lng: number },
+  ring: [number, number][],
+): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [yi, xi] = ring[i]!;
+    const [yj, xj] = ring[j]!;
+    const crosses =
+      yi > point.lat !== yj > point.lat &&
+      point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function normalizeAreaName(name: string): string {
+  return name.toLowerCase().replace(/^near\s+/i, "").trim();
+}
+
+/**
+ * Resolve a geocoded search result to the locality it belongs to, reusing the
+ * server-computed area geometry. The geocoder's display string is hierarchical
+ * ("Sector 12, Dwarka, South West Delhi, …"), so only its leading component is
+ * trusted for a name match — later parts are parent administrative units that
+ * often coincide with area names but are not what the user searched. Exact name
+ * match wins, then a prefix match, then falling back to the risk polygon that
+ * physically contains the coordinate. Returns null when the location has no
+ * covered risk data, so the caller can show the "no data" state instead of
+ * highlighting a neighbouring area.
+ */
+export function findAreaForSearch(
+  displayName: string,
+  point: { lat: number; lng: number },
+  areas: AreaRegion[],
+): AreaRegion | null {
+  const primary = displayName
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)[0];
+
+  if (primary) {
+    const norm = normalizeAreaName(primary);
+    const normAreas = areas.map((a) => ({
+      area: a,
+      name: normalizeAreaName(a.areaName),
+    }));
+
+    const exact = normAreas.find((a) => a.name === norm);
+    if (exact) return exact.area;
+
+    let best: AreaRegion | null = null;
+    let bestLen = -1;
+    for (const a of normAreas) {
+      if (!a.name || a.name.length < 2) continue;
+      const forward = norm.startsWith(`${a.name} `) && a.name.length > bestLen;
+      const backward = a.name.startsWith(`${norm} `) && a.name.length > bestLen;
+      if (forward || backward) {
+        best = a.area;
+        bestLen = a.name.length;
+      }
+    }
+    if (best) return best;
+  }
+
+  for (const area of areas) {
+    if (area.polygon.length >= 3 && pointInPolygon(point, area.polygon)) {
+      return area;
+    }
+  }
+  return null;
 }
 
 export function riskColor(level: RiskLevel): string {

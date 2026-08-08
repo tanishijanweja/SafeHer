@@ -243,6 +243,7 @@ heatmapRouter.get("/", async (c) => {
           description: true,
           category: true,
           createdAt: true,
+          incidentDate: true,
         },
       }),
     ]);
@@ -260,11 +261,12 @@ heatmapRouter.get("/", async (c) => {
     const reportsByGh = new Map<
       string,
       Array<{
-        title: string;
-        description: string | null;
-        category: string | null;
-        createdAt: Date;
-      }>
+title: string;
+      description: string | null;
+      category: string | null;
+      createdAt: Date;
+      incidentDate: Date | null;
+    }>
     >();
     for (const r of recentReports) {
       if (!r.geohash) continue;
@@ -303,7 +305,7 @@ heatmapRouter.get("/", async (c) => {
       categories: Set<string>;
       reasons: Set<string>;
       articles: Map<string, { title: string; publishedAt: string; sourceDomain: string | null; url: string | null }>;
-      reports: Map<string, { title: string; description: string | null; category: string | null; createdAt: string }>;
+      reports: Map<string, { title: string; description: string | null; category: string | null; createdAt: string; incidentDate: string | null }>;
       demos: Map<string, { title: string; date: string }>;
       districts: Set<string>;
       latestActivityAt: Date;
@@ -442,6 +444,9 @@ heatmapRouter.get("/", async (c) => {
             description: r.description,
             category: formatCategory(r.category),
             createdAt: new Date(r.createdAt).toISOString(),
+            incidentDate: r.incidentDate
+              ? new Date(r.incidentDate).toISOString()
+              : null,
           });
         }
       }
