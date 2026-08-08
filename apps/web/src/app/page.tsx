@@ -26,7 +26,6 @@ import {
 import { AreaHoverTooltip } from "@/components/map-ui";
 import HelplineMarquee from "@/components/helpline-marquee";
 import LoginPrompt from "@/components/login-prompt";
-import TrustedContactsOnboarding from "@/components/trusted-contacts-onboarding";
 import {
   type HeatmapArea,
   groupCellsIntoAreas,
@@ -409,8 +408,6 @@ export default function Home() {
           )}
         </div>
       </section>
-
-      <TrustedContactsOnboarding />
     </main>
   );
 }

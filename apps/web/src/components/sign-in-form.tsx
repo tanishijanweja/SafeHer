@@ -6,25 +6,16 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import z from "zod";
 
-import { fetchContacts } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
 import Loader from "./loader";
 
-async function promptToAddTrustedContacts(router: ReturnType<typeof useRouter>) {
+function promptToAddTrustedContacts() {
   try {
-    const contacts = await fetchContacts();
-    if (contacts.length > 0) return;
+    localStorage.setItem("safeher-onboard-contacts", "1");
   } catch {
-    // offline / API error — prompt anyway, we can't confirm contacts exist
+    // ignore storage access errors (private mode)
   }
-  toast("Add your trusted contacts", {
-    description: "So we can alert them if you ever trigger an SOS.",
-    action: {
-      label: "Add contacts",
-      onClick: () => router.push("/contacts"),
-    },
-  });
 }
 
 export default function SignInForm({
@@ -52,7 +43,7 @@ export default function SignInForm({
           onSuccess: () => {
             router.push(redirect as never);
             toast.success("Sign in successful");
-            void promptToAddTrustedContacts(router);
+            promptToAddTrustedContacts();
           },
           onError: (error) => {
             toast.error(error.error.message || error.error.statusText);

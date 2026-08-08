@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
+import { fetchContacts } from "@/lib/api";
 
 import { ContactDialog } from "@/components/contacts/contact-dialog";
 
@@ -20,9 +21,27 @@ export default function TrustedContactsOnboarding() {
     } catch {
       // ignore storage access errors (private mode)
     }
-    if (shouldOpen) {
+    if (!shouldOpen) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const contacts = await fetchContacts();
+        if (cancelled) return;
+        if (contacts.length > 0) {
+          finish();
+          return;
+        }
+      } catch {
+        // offline / API error — open anyway, we can't confirm contacts exist
+      }
+      if (cancelled) return;
       setOpen(true);
-    }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isPending, session]);
 
   function finish() {

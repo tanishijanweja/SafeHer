@@ -4,6 +4,8 @@ import { Phone, Siren, ShieldAlert } from "lucide-react";
 
 import { cn } from "@safe-her/ui/lib/utils";
 
+import { authClient } from "@/lib/auth-client";
+
 const HELPLINES = [
   { number: "112", label: "Emergency" },
   { number: "100", label: "Police" },
@@ -15,6 +17,12 @@ const HELPLINES = [
 ] as const;
 
 export default function HelplineMarquee() {
+  const { data: session, isPending } = authClient.useSession();
+
+  if (isPending || session) {
+    return null;
+  }
+
   return (
     <div className="sticky top-0 z-40 flex items-center overflow-hidden border-b border-safeher-rose/20 bg-safeher-rose/95 text-white shadow-sm shadow-rose-900/10 backdrop-blur-sm dark:bg-safeher-rose/90">
       <div className="mx-1.5 my-1 flex shrink-0 items-center gap-2 rounded-2xl bg-rose-950/90 px-3 py-2 shadow-sm sm:px-4">
