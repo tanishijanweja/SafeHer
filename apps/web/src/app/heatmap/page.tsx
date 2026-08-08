@@ -417,7 +417,9 @@ function LocalityDetailPopup({
                       </span>
                     )}
                     <span className="mt-1 block text-[11px] text-muted-foreground">
-                      {formatDateTime(report.createdAt)}
+                      {report.incidentDate
+                        ? `Incident: ${formatDateTime(report.incidentDate)}`
+                        : `Reported: ${formatDateTime(report.createdAt)}`}
                     </span>
                   </li>
                 ))}

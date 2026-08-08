@@ -72,6 +72,7 @@ model Report {
   isSpam          Boolean          @default(false)
   confidenceLevel ReportConfidence @default(UNVERIFIED)
   createdAt       DateTime         @default(now())
+  incidentDate    DateTime?
   updatedAt       DateTime         @updatedAt
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   geohash         String           @default("")

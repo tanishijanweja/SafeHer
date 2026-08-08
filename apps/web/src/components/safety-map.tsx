@@ -678,7 +678,7 @@ export default function SafetyMap({
           border-radius: 12px !important;
           overflow: hidden;
           box-shadow: 0 4px 16px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04) !important;
-          margin: 12px 12px 0 0 !important;
+          margin: 18px 18px 0 0 !important;
         }
         .leaflet-control-zoom a {
           width: 34px !important;

@@ -263,6 +263,11 @@ export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
                     ) : null}
                     {formatDateTime(r.createdAt)}
                   </span>
+                  {r.incidentDate ? (
+                    <span className="text-[10px] font-medium text-amber-600">
+                      Incident: {formatDateTime(r.incidentDate)}
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ul>

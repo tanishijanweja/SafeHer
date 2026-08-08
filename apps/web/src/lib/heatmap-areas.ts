@@ -14,6 +14,7 @@ export type CommunityReportRef = {
   description?: string | null;
   category?: string | null;
   createdAt: string;
+  incidentDate?: string | null;
 };
 
 export type DemoHistoricalIncidentRef = {
