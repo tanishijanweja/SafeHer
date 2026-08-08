@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { auth } from "@safe-her/auth";
 import prisma, { ReportCategory } from "@safe-her/db";
+import { nearestDelhiPlace } from "@safe-her/db/delhi-locations";
 
 import { analyzeReport, generateEmbedding } from "../services/gemini";
 import { generateGeohash } from "../services/geohash";
@@ -128,7 +129,13 @@ reportsRouter.get("/", async (c) => {
   const reports = await prisma.report.findMany({
     orderBy: { createdAt: "desc" },
   });
-  return c.json(reports);
+  // Attach the nearest named locality so the client can show a human-friendly
+  // location without geocoding every report. Additive — existing fields unchanged.
+  const enriched = reports.map((report) => ({
+    ...report,
+    areaName: nearestDelhiPlace(report.latitude, report.longitude).name,
+  }));
+  return c.json(enriched);
 });
 
 export default reportsRouter;

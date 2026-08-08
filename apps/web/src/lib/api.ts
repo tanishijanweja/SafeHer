@@ -78,11 +78,35 @@ export type Report = {
   createdAt: string;
   updatedAt: string;
   geohash: string;
+  /** Nearest named Delhi locality, resolved server-side. */
+  areaName?: string;
+};
+
+export type NewsArticle = {
+  id: string;
+  title: string;
+  url: string;
+  sourceDomain: string;
+  category: string | null;
+  severity: number;
+  confidence: number;
+  isWomenSafety: boolean;
+  localityName: string;
+  latitude: number;
+  longitude: number;
+  publishedAt: string;
 };
 
 export async function fetchReports(): Promise<Report[]> {
   const res = await fetch(`${API_URL}/reports`);
   if (!res.ok) throw new Error(`Reports HTTP ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export async function fetchNews(): Promise<NewsArticle[]> {
+  const res = await fetch(`${API_URL}/news`);
+  if (!res.ok) throw new Error(`News HTTP ${res.status}`);
   const data = await res.json();
   return Array.isArray(data) ? data : [];
 }

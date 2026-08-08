@@ -8,6 +8,7 @@ import reportsRouter from "./routes/reports";
 import heatmapRouter from "./routes/heatmap";
 import contactsRouter from "./routes/contacts";
 import sosRouter from "./routes/sos";
+import newsRouter from "./routes/news";
 import { generateGeohash } from "./services/geohash";
 import {
   getHistoricalScore,
@@ -123,6 +124,7 @@ app.route("/reports", reportsRouter);
 app.route("/heatmap", heatmapRouter);
 app.route("/contacts", contactsRouter);
 app.route("/sos", sosRouter);
+app.route("/news", newsRouter);
 
 app.get("/debug/news", async (c) => {
   try {
