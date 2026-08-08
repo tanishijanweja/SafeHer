@@ -37,9 +37,48 @@ type MapPoint = {
   lat: number;
   lng: number;
   color?: string;
+  /** Renders a coloured circular pin with this emoji instead of a plain marker. */
+  emoji?: string;
+  /**
+   * Renders a distinct teardrop pin with the given icon (SVG glyph). Pick
+   * different glyphs + colours for each category so pins stay easy to tell apart.
+   */
+  glyph?: GlyphKey;
+  /** Renders a large pulsing "you are here" pin. */
+  live?: boolean;
   popup?: React.ReactNode;
   hover?: React.ReactNode;
 };
+
+/** Distinct pin glyphs used to label points on the map. */
+export type GlyphKey = "police" | "hospital" | "fire" | "helpline";
+
+/** White inner icon SVG for each glyph (drawn on the teardrop body). */
+const GLYPH_ICON: Record<GlyphKey, string> = {
+  police: `<path d="M12 3 19.5 5.3v5.65C19.5 14.6 16.4 18.4 12 20 7.6 18.4 4.5 14.6 4.5 10.95V5.3L12 3Z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.4 9.6h7.2v3.2a3.55 3.55 0 0 1-7.2 0V9.6Z" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/>`,
+  hospital: `<path d="M8.2 5.5h3.8v2.7a1 1 0 0 0 2 0V5.5h3.8a1 1 0 0 1 1 1v3.8h-2.8a1 1 0 0 0 0 2h2.8v3.8a1 1 0 0 1-1 1h-3.8v-2.7a1 1 0 0 0-2 0v2.7H8.2a1 1 0 0 1-1-1v-3.8h2.8a1 1 0 0 0 0-2H7.2V6.5a1 1 0 0 1 1-1Z" fill="#fff"/>`,
+  fire: `<path d="M12 3.5c.6 1.6 2.3 2.7 2.3 5.1a3.2 3.2 0 0 1-6.4-.4C8 10 6.6 11 6.6 13.2a6 6 0 0 0 12 0C18.6 8.4 14.6 6.6 12 3.5Z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.3 14.2a3 3 0 0 0 1.9 2.1" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/>`,
+  helpline: `<rect x="7.2" y="3.2" width="7.6" height="17.6" rx="2.2" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M10.3 16.6h1.4" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`,
+};
+
+/** Teardrop pin colour per glyph (fallback when a point has no `color`). */
+export const GLYPH_COLOR: Record<GlyphKey, string> = {
+  police: "#2563eb",
+  hospital: "#16a34a",
+  fire: "#dc2626",
+  helpline: "#7c3aed",
+};
+
+export function glyphPinHtml(glyph: GlyphKey, color = GLYPH_COLOR[glyph]): string {
+  return `<svg width="38" height="44" viewBox="0 0 38 44" xmlns="http://www.w3.org/2000/svg">
+    <path d="M19 43s-15-11.4-15-24a15 15 0 1 1 30 0c0 12.6-15 24-15 24Z"
+          fill="${color}" stroke="#fff" stroke-width="1.6"/>
+    <circle cx="19" cy="18.2" r="9.6" fill="#fff" stroke="rgba(0,0,0,0.08)" stroke-width="1"/>
+    <g transform="translate(10.6 9.8) scale(0.7)">
+      ${GLYPH_ICON[glyph]}
+    </g>
+  </svg>`;
+}
 
 export type MapPolygon = {
   id: string;
@@ -102,6 +141,28 @@ function MapChrome({
       onMapClick?.(e.latlng.lat, e.latlng.lng);
     },
   });
+  return null;
+}
+
+function CenterController({
+  center,
+  zoom,
+}: {
+  center: { lat: number; lng: number };
+  zoom: number;
+}) {
+  const map = useMap();
+  const didInitRef = useRef(false);
+  useEffect(() => {
+    if (!didInitRef.current) {
+      didInitRef.current = true;
+      return;
+    }
+    const c = map.getCenter();
+    if (Math.abs(center.lat - c.lat) > 0.008 || Math.abs(center.lng - c.lng) > 0.008) {
+      map.setView([center.lat, center.lng], zoom, { animate: true });
+    }
+  }, [map, center.lat, center.lng, zoom]);
   return null;
 }
 
@@ -221,6 +282,56 @@ function PointMarker({
       {point.popup}
     </Popup>
   ) : null;
+
+  if (point.glyph) {
+    const glyphIcon = divIcon({
+      className: "safeher-glyph-marker",
+      html: `<div style="filter:drop-shadow(0 3px 6px rgba(0,0,0,.35));width:38px;height:44px;position:relative;">${glyphPinHtml(
+        point.glyph,
+        point.color ?? GLYPH_COLOR[point.glyph],
+      )}</div>`,
+      iconSize: [38, 44],
+      iconAnchor: [19, 43],
+      popupAnchor: [0, -24],
+    });
+    return (
+      <Marker
+        ref={setRef as never}
+        position={[point.lat, point.lng]}
+        icon={glyphIcon}
+        eventHandlers={eventHandlers}
+        zIndexOffset={500}
+      >
+        {detailPopup}
+      </Marker>
+    );
+  }
+
+  if (point.emoji || point.live) {
+    const isLive = point.live === true;
+    const size = isLive ? 30 : 36;
+    const color = point.color ?? "#ffffff";
+    const emoji = point.emoji ?? "📍";
+    const emojiIcon = divIcon({
+      className: "",
+      html: isLive
+        ? `<div style="font-size:30px;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));">${emoji}</div>`
+        : `<div style="position:relative;display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:9999px;background:${color};box-shadow:0 4px 14px rgba(0,0,0,.35);border:3px solid #fff;font-size:${isLive ? 20 : 18}px;line-height:1;transform:${isLive ? "scale(1.05)" : "none"};">${emoji}</div>`,
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+    });
+    return (
+      <Marker
+        ref={setRef as never}
+        position={[point.lat, point.lng]}
+        icon={emojiIcon}
+        eventHandlers={eventHandlers}
+        zIndexOffset={isLive ? 1000 : 500}
+      >
+        {detailPopup}
+      </Marker>
+    );
+  }
 
   if (point.color) {
     return (
@@ -726,6 +837,7 @@ export default function SafetyMap({
         style={{ width: "100%", height: "100%" }}
       >
         <TileLayer attribution={attribution} url={tileUrl} />
+        <CenterController center={center} zoom={zoom} />
         <MapChrome onMapClick={onMapClick} onBackgroundClick={deactivate} />
         <ActivePopupOpener activeId={activeId} markerRefs={markerRefs} />
 
