@@ -35,6 +35,11 @@ export default function SignUpForm({
         },
         {
           onSuccess: () => {
+            try {
+              localStorage.setItem("safeher-onboard-contacts", "1");
+            } catch {
+              // ignore storage access errors (private mode)
+            }
             router.push(redirect as never);
             toast.success("Sign up successful");
           },

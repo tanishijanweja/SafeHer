@@ -24,6 +24,8 @@ import {
   severityLabel,
 } from "@/lib/api";
 import { AreaHoverTooltip } from "@/components/map-ui";
+import LoginPrompt from "@/components/login-prompt";
+import TrustedContactsOnboarding from "@/components/trusted-contacts-onboarding";
 import {
   type HeatmapArea,
   groupCellsIntoAreas,
@@ -214,6 +216,8 @@ export default function Home() {
         className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_80%_60%_at_10%_0%,oklch(0.92_0.05_350),transparent_55%),radial-gradient(ellipse_70%_50%_at_90%_10%,oklch(0.94_0.04_20),transparent_50%),radial-gradient(ellipse_60%_40%_at_50%_100%,oklch(0.95_0.03_350),transparent_55%)]"
       />
 
+      <LoginPrompt />
+
       <section className="mx-auto max-w-7xl px-4 pb-10 pt-10 sm:px-6 sm:pt-14 lg:pt-16">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-12">
           <div className="flex flex-col gap-6">
@@ -402,6 +406,8 @@ export default function Home() {
           )}
         </div>
       </section>
+
+      <TrustedContactsOnboarding />
     </main>
   );
 }
