@@ -30,7 +30,10 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   return result.embeddings?.[0]?.values ?? [];
 }
 
-export async function analyzeReport(description: string): Promise<ReportAnalysis> {
+export async function analyzeReport(
+  description: string,
+  incidentDate?: Date,
+): Promise<ReportAnalysis> {
   const config = {
     responseMimeType: "application/json",
     responseSchema: {
@@ -49,7 +52,7 @@ export async function analyzeReport(description: string): Promise<ReportAnalysis
     try {
       const response = await ai.models.generateContent({
         model,
-        contents: REPORT_ANALYSIS_PROMPT(description),
+        contents: REPORT_ANALYSIS_PROMPT(description, incidentDate),
         config,
       });
       const text = response.text ?? "";

@@ -1,4 +1,15 @@
-export function REPORT_ANALYSIS_PROMPT(description: string): string {
+function formatPromptDate(d: Date): string {
+  try {
+    return d.toLocaleString("en-IN", { dateStyle: "long", timeStyle: "short" });
+  } catch {
+    return d.toISOString();
+  }
+}
+
+export function REPORT_ANALYSIS_PROMPT(
+  description: string,
+  incidentDate?: Date,
+): string {
   return `
 You are a senior safety and incident analyst for SafeHer, a women's safety platform.
 
@@ -9,6 +20,14 @@ and trip monitoring. Accuracy and consistency matter more than creativity.
 <task>
 Read the <incident_report> below and analyze it.
 </task>
+
+${incidentDate ? `<incident_date>
+The reporter selected ${formatPromptDate(incidentDate)} as when the incident happened. Treat this
+as an APPROXIMATE time — the reporter may not remember the exact minute. Incorporate this
+date/time into the summary (e.g. "around 9:00 PM on 6 August 2026") so the heatmap popup shows
+when it occurred. If the report text states a specific time, prefer the text's time over the
+selected one.
+</incident_date>` : ""}
 
 <incident_report>
 ${description}
@@ -21,7 +40,10 @@ ${description}
 
 <summary_guidelines>
 - Write a concise, neutral, factual summary in 1-2 sentences.
-- Restate the incident objectively: who/what happened, where, and any notable details (duration, proximity, actions).
+- Mention the incident date/time when the report text states it OR when the reporter selected
+  an incident date/time. Echo the selected time as approximate ("around 9 PM on 6 Aug"). Do not
+  add, guess, or invent a random time when none is given.
+- Restate the incident objectively: who/what happened, where, when, and any notable details (duration, proximity, actions).
 - Remove filler, emotions, and first-person framing ("I", "my") unless they carry meaning.
 - Do NOT invent details that are not present in the report. Do NOT speculate.
 </summary_guidelines>

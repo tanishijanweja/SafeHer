@@ -12,6 +12,7 @@ const reportSchema = z.object({
   description: z.string().min(1),
   latitude: z.number(),
   longitude: z.number(),
+  incidentDate: z.string().optional(),
 });
 
 const VALID_CATEGORIES = Object.values(ReportCategory);
@@ -50,13 +51,15 @@ reportsRouter.post("/", async (c) => {
     return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
   }
 
-  const { description, latitude, longitude } = parsed.data;
+  const { description, latitude, longitude, incidentDate } = parsed.data;
+
+  const incidentDateObj = incidentDate ? new Date(incidentDate) : undefined;
 
   const geohash = generateGeohash(latitude, longitude);
 
   let analysis: Awaited<ReturnType<typeof analyzeReport>>;
   try {
-    analysis = await analyzeReport(description);
+    analysis = await analyzeReport(description, incidentDateObj);
   } catch (error) {
     console.error("Gemini analysis failed, using fallback:", error);
     analysis = {
@@ -90,6 +93,7 @@ reportsRouter.post("/", async (c) => {
           category,
           severity: analysis.severity,
           geohash,
+          incidentDate: incidentDateObj,
         },
       });
 
@@ -112,6 +116,7 @@ reportsRouter.post("/", async (c) => {
       category,
       severity: analysis.severity,
       geohash,
+      incidentDate: incidentDateObj,
     },
   });
 
