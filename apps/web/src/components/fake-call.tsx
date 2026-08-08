@@ -36,7 +36,7 @@ export function FakeCall({
 
   useEffect(() => {
     if (stage !== "incoming") return;
-    const audio = new Audio("/fake-call-ringtone.wav");
+    const audio = new Audio("/fake-call-audio.mp3");
     audio.loop = true;
     audio.volume = 1;
     audioRef.current = audio;
