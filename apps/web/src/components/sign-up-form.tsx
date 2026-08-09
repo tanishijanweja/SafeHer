@@ -6,7 +6,10 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import z from "zod";
 
+import { checkPasswordStrength } from "@safe-her/auth/password-policy";
+
 import { authClient } from "@/lib/auth-client";
+import { safeRedirect } from "@/lib/safe-redirect";
 
 import Loader from "./loader";
 
@@ -19,6 +22,7 @@ export default function SignUpForm({
 }) {
   const router = useRouter();
   const { isPending } = authClient.useSession();
+  const target = safeRedirect(redirect);
 
   const form = useForm({
     defaultValues: {
@@ -40,8 +44,10 @@ export default function SignUpForm({
             } catch {
               // ignore storage access errors (private mode)
             }
-            router.push(redirect as never);
-            toast.success("Sign up successful");
+            // autoSignIn is disabled server-side for account-enumeration
+            // protection, so a fresh account must sign in explicitly.
+            toast.success("Account created — please sign in to continue");
+            router.push(`/login?redirect=${encodeURIComponent(target)}`);
           },
           onError: (error) => {
             toast.error(error.error.message || error.error.statusText);
@@ -50,11 +56,19 @@ export default function SignUpForm({
       );
     },
     validators: {
-      onSubmit: z.object({
-        name: z.string().min(2, "Name must be at least 2 characters"),
-        email: z.email("Invalid email address"),
-        password: z.string().min(8, "Password must be at least 8 characters"),
-      }),
+      onSubmit: z
+        .object({
+          name: z.string().min(2, "Name must be at least 2 characters"),
+          email: z.email("Invalid email address"),
+          password: z.string().min(8, "Password must be at least 8 characters"),
+        })
+        .superRefine((val, ctx) => {
+          const reason = checkPasswordStrength(val.password, {
+            email: val.email,
+            name: val.name,
+          });
+          if (reason) ctx.addIssue({ code: "custom", path: ["password"], message: reason });
+        }),
     },
   });
 

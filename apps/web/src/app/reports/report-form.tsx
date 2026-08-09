@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ImagePlus, LocateFixed, Loader2, X } from "lucide-react";
+import { CheckCircle2, LocateFixed, Loader2, UserRoundPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@safe-her/ui/components/button";
@@ -16,6 +17,7 @@ import {
   CardTitle,
 } from "@safe-her/ui/components/card";
 import { Label } from "@safe-her/ui/components/label";
+import { Skeleton } from "@safe-her/ui/components/skeleton";
 import { Textarea } from "@safe-her/ui/components/textarea";
 
 import LocationSearch from "@/components/location-search";
@@ -35,18 +37,38 @@ const SafetyMap = dynamic(() => import("@/components/safety-map"), {
 
 const DEFAULT_LOCATION = { lat: 28.61, lng: 77.2 };
 
+const DRAFT_KEY = "safeher-report-draft";
+
+type ReportDraft = {
+  description?: string;
+  incidentDate?: string | null;
+  incidentTime?: string | null;
+  lat?: number;
+  lng?: number;
+};
+
+function loadDraft(): ReportDraft | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as ReportDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function ReportPage() {
   const router = useRouter();
-  const { data: session } = authClient.useSession();
+  const { data: session, isPending } = authClient.useSession();
   const [description, setDescription] = useState("");
   const [incidentDate, setIncidentDate] = useState<Date | null>(null);
   const [incidentTime, setIncidentTime] = useState<string | null>(null);
-  const [image, setImage] = useState<File | null>(null);
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [location, setLocation] = useState(DEFAULT_LOCATION);
   const [address, setAddress] = useState<string | null>(null);
   const [locationDenied, setLocationDenied] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const didRestoreRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,7 +111,54 @@ export default function ReportPage() {
     [],
   );
 
+  // Restore a saved draft (e.g. after signing in) so nothing typed is lost.
   useEffect(() => {
+    const draft = loadDraft();
+    if (!draft) return;
+    const meaningful =
+      Boolean(draft.description?.trim()) ||
+      Boolean(draft.incidentDate) ||
+      Boolean(draft.incidentTime) ||
+      (typeof draft.lat === "number" &&
+        typeof draft.lng === "number" &&
+        (draft.lat !== DEFAULT_LOCATION.lat || draft.lng !== DEFAULT_LOCATION.lng));
+    if (!meaningful) return;
+    if (draft.description) setDescription(draft.description);
+    if (draft.incidentDate) setIncidentDate(new Date(draft.incidentDate));
+    if (draft.incidentTime) setIncidentTime(draft.incidentTime);
+    if (typeof draft.lat === "number" && typeof draft.lng === "number") {
+      setLocation({ lat: draft.lat, lng: draft.lng });
+      didRestoreRef.current = true;
+    }
+  }, []);
+
+  // Keep the draft in sync so a mid-report sign-in never loses the details.
+  useEffect(() => {
+    const meaningful =
+      description.trim().length > 0 || Boolean(incidentDate) || Boolean(incidentTime);
+    try {
+      if (!meaningful) {
+        localStorage.removeItem(DRAFT_KEY);
+        return;
+      }
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          description,
+          incidentDate: incidentDate?.toISOString() ?? null,
+          incidentTime,
+          lat: location.lat,
+          lng: location.lng,
+        }),
+      );
+    } catch {
+      // ignore storage access errors (private mode)
+    }
+  }, [description, incidentDate, incidentTime, location]);
+
+  useEffect(() => {
+    // Skip the auto-GPS grab when a restored draft already pinned a spot.
+    if (didRestoreRef.current) return;
     requestLocation();
   }, [requestLocation]);
 
@@ -112,41 +181,110 @@ export default function ReportPage() {
     return base;
   }
 
+  const descriptionTrimmed = description.trim();
+  const canSubmit =
+    descriptionTrimmed.length >= 10 && !submitting;
+
   async function handleSubmit() {
     if (!session) {
-      toast.error("Please login first to report an incident");
-      router.push("/login?redirect=/reports");
+      toast.error("Please sign in to report an incident");
+      router.push("/login?redirect=/reports%3Fview%3Dreport");
       return;
     }
 
-    const res = await fetch(`${API_URL}/reports`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        description,
-        latitude: location.lat,
-        longitude: location.lng,
-        incidentDate: combineDateTime()?.toISOString(),
-      }),
-    });
-
-    if (res.status === 401) {
-      router.push("/login?redirect=/reports");
+    if (descriptionTrimmed.length < 10) {
+      toast.error("Please describe the incident in at least a sentence (10+ characters).");
       return;
     }
 
-    if (res.status === 409) {
-      toast.success("Thank you, this report was already submitted");
-      return;
-    }
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API_URL}/reports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          description,
+          latitude: location.lat,
+          longitude: location.lng,
+          incidentDate: combineDateTime()?.toISOString(),
+        }),
+      });
 
-    if (!res.ok) {
-      toast.error("Failed to submit report. Please try again.");
-      return;
-    }
+      if (res.status === 401) {
+        router.push("/login?redirect=/reports%3Fview%3Dreport");
+        return;
+      }
 
-    toast.success("Report submitted");
+      if (res.status === 409) {
+        toast.success("This incident was already reported — thank you!");
+        router.push("/reports?view=feed");
+        return;
+      }
+
+      if (!res.ok) {
+        toast.error("We couldn't submit your report. Please try again.");
+        return;
+      }
+
+      try {
+        localStorage.removeItem(DRAFT_KEY);
+      } catch {
+        // ignore storage access errors (private mode)
+      }
+      toast.success("Report submitted — thank you for making the map safer.");
+      router.push("/reports?view=feed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (isPending) {
+    return (
+      <main className="flex justify-center p-6">
+        <Skeleton className="h-80 w-full max-w-xl rounded-2xl" />
+      </main>
+    );
+  }
+
+  if (!session) {
+    return (
+      <main className="flex justify-center p-6">
+        <Card className="w-full max-w-xl rounded-2xl">
+          <CardHeader>
+            <CardTitle>Report Incident</CardTitle>
+            <CardDescription>
+              Describe what happened and select the location on the map.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col items-start gap-3 rounded-2xl bg-primary/5 p-5 ring-1 ring-primary/15">
+              <span className="flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
+                <UserRoundPlus className="size-5" />
+              </span>
+              <div className="space-y-1">
+                <h2 className="text-base font-semibold text-foreground">
+                  Sign in to report an incident
+                </h2>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  Reports are tied to your account so nearby alerts stay accurate.
+                  Sign in first — we&apos;ll keep your draft, so nothing you type is
+                  lost.
+                </p>
+              </div>
+              <Link
+                href="/login?redirect=/reports%3Fview%3Dreport"
+                className="inline-flex"
+              >
+                <Button className="h-9 rounded-full px-4 text-xs font-semibold">
+                  Sign in to continue
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </main>
+    );
   }
 
   return (
@@ -161,46 +299,24 @@ export default function ReportPage() {
 
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="description">Description</Label>
-            <div className="relative">
-              <Textarea
-                id="description"
-                placeholder="Describe the incident..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="rounded-2xl pr-11"
-              />
-              <button
-                type="button"
-                onClick={() => imageInputRef.current?.click()}
-                aria-label="Attach an image"
-                title="Attach an image"
-                className="absolute right-2 bottom-2 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <ImagePlus className="size-4" aria-hidden />
-              </button>
-            </div>
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => setImage(e.target.files?.[0] ?? null)}
+            <Label htmlFor="description">
+              Description{" "}
+              <span className="ml-1 font-normal text-muted-foreground">(required)</span>
+            </Label>
+            <Textarea
+              id="description"
+              placeholder="Describe what happened, where, and any details that could help others avoid the same spot…"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={5}
+              className="rounded-2xl"
             />
-            {image ? (
-              <span className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-muted/70 px-2 py-1 text-xs text-foreground ring-1 ring-border/60">
-                <ImagePlus className="size-3 text-muted-foreground" aria-hidden />
-                <span className="max-w-40 truncate">{image.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setImage(null)}
-                  aria-label="Remove image"
-                  className="text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <X className="size-3" aria-hidden />
-                </button>
-              </span>
-            ) : null}
+            <p className="text-[11px] text-muted-foreground">
+              {descriptionTrimmed.length}/200 characters
+              {descriptionTrimmed.length > 0 && descriptionTrimmed.length < 10
+                ? " — a short sentence helps the AI grade severity better"
+                : ""}
+            </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -267,15 +383,45 @@ export default function ReportPage() {
             <SafetyMap
               center={location}
               height={320}
-              points={[{ lat: location.lat, lng: location.lng }]}
+              points={[
+                {
+                  id: "location-pin",
+                  lat: location.lat,
+                  lng: location.lng,
+                  draggable: true,
+                },
+              ]}
               onMapClick={(lat, lng) => setLocation({ lat, lng })}
+              onPointDragEnd={(_id, lat, lng) => setLocation({ lat, lng })}
               className="overflow-hidden rounded-2xl ring-1 ring-border"
             />
+            <p className="text-[11px] text-muted-foreground">
+              Drag the pin or tap the map to fine-tune the exact spot.
+            </p>
           </div>
 
-          <Button onClick={handleSubmit} className="rounded-lg">
-            Submit
+          <Button
+            onClick={() => void handleSubmit()}
+            disabled={!canSubmit}
+            className="h-11 rounded-xl text-sm font-semibold"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                Submitting…
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="size-4" aria-hidden />
+                Submit report
+              </>
+            )}
           </Button>
+          {!submitting && descriptionTrimmed.length < 10 && (
+            <p className="-mt-2 text-center text-[11px] text-muted-foreground">
+              Describe the incident in at least a sentence to submit.
+            </p>
+          )}
         </CardContent>
       </Card>
     </main>

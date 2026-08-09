@@ -8,13 +8,35 @@ import { nearestDelhiPlace } from "@safe-her/db/delhi-locations";
 import { analyzeReport, generateEmbedding } from "../services/gemini";
 import { generateGeohash } from "../services/geohash";
 import { refreshRiskScore } from "../services/risk";
+import { getHeatmapCacheInvalidator } from "./heatmap";
 
 const reportSchema = z.object({
-  description: z.string().min(1),
-  latitude: z.number(),
-  longitude: z.number(),
-  incidentDate: z.string().optional(),
+  description: z.string().min(10).max(2000),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  incidentDate: z
+    .string()
+    .datetime({ offset: true })
+    .max(50)
+    .optional(),
 });
+
+/** Public-facing report DTO — exposes only what the community map needs,
+ *  never user ids or internal fields. */
+const publicReportSelect = {
+  id: true,
+  title: true,
+  description: true,
+  category: true,
+  severity: true,
+  latitude: true,
+  longitude: true,
+  geohash: true,
+  confidenceLevel: true,
+  isSpam: true,
+  incidentDate: true,
+  createdAt: true,
+} as const;
 
 const VALID_CATEGORIES = Object.values(ReportCategory);
 
@@ -45,7 +67,7 @@ reportsRouter.post("/", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const body = await c.req.json();
+  const body = await c.req.json().catch(() => null);
   const parsed = reportSchema.safeParse(body);
 
   if (!parsed.success) {
@@ -100,6 +122,7 @@ reportsRouter.post("/", async (c) => {
 
       await prisma.$executeRaw`UPDATE "report" SET "embedding" = ${vectorLiteral}::vector WHERE "id" = ${report.id}`;
       await refreshRiskScore(geohash);
+      getHeatmapCacheInvalidator()();
       return c.json(report);
     }
   } catch (error) {
@@ -122,12 +145,15 @@ reportsRouter.post("/", async (c) => {
   });
 
   await refreshRiskScore(geohash);
+  getHeatmapCacheInvalidator()();
   return c.json(report);
 });
 
 reportsRouter.get("/", async (c) => {
   const reports = await prisma.report.findMany({
+    select: publicReportSelect,
     orderBy: { createdAt: "desc" },
+    take: 400,
   });
   // Attach the nearest named locality so the client can show a human-friendly
   // location without geocoding every report. Additive — existing fields unchanged.

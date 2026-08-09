@@ -9,6 +9,9 @@ export const env = createEnv({
     BETTER_AUTH_URL: z.url(),
     CORS_ORIGIN: z.url(),
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+    // Optional: shared, multi-instance rate-limit store (Upstash REST-compatible).
+    RATE_LIMIT_REDIS_URL: z.string().url().optional(),
+    RATE_LIMIT_REDIS_TOKEN: z.string().optional(),
   },
   runtimeEnv: process.env,
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,

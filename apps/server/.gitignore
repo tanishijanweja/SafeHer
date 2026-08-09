@@ -50,6 +50,9 @@ lerna-debug.log*
 # local db
 *.db*
 
+# uploaded SOS audio/video clips
+uploads/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

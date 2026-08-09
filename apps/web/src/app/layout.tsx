@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "../index.css";
 import Header from "@/components/header";
 import Providers from "@/components/providers";
+import ServiceWorkerRegister from "@/components/service-worker-register";
 import TrustedContactsOnboarding from "@/components/trusted-contacts-onboarding";
 
 const geistSans = Geist({
@@ -30,11 +31,14 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <Providers>
-          <div className="grid h-svh grid-rows-[auto_1fr] overflow-hidden bg-background">
+          <div className="grid h-dvh grid-rows-[auto_1fr] overflow-hidden bg-background">
             <Header />
-            <div className="min-h-0 overflow-y-auto">{children}</div>
+            <div className="min-h-0 overflow-y-auto overscroll-contain pb-[max(0px,env(safe-area-inset-bottom))]">
+              {children}
+            </div>
           </div>
           <TrustedContactsOnboarding />
+          <ServiceWorkerRegister />
         </Providers>
       </body>
     </html>

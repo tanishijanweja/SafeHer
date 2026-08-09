@@ -4,8 +4,6 @@ import { Phone, Siren, ShieldAlert } from "lucide-react";
 
 import { cn } from "@safe-her/ui/lib/utils";
 
-import { authClient } from "@/lib/auth-client";
-
 const HELPLINES = [
   { number: "112", label: "Emergency" },
   { number: "100", label: "Police" },
@@ -17,43 +15,37 @@ const HELPLINES = [
 ] as const;
 
 export default function HelplineMarquee() {
-  const { data: session, isPending } = authClient.useSession();
-
-  if (isPending || session) {
-    return null;
-  }
-
   return (
-    <div className="sticky top-0 z-40 flex items-center overflow-hidden border-b border-safeher-rose/20 bg-safeher-rose/95 text-white shadow-sm shadow-rose-900/10 backdrop-blur-sm dark:bg-safeher-rose/90">
-      <div className="mx-1.5 my-1 flex shrink-0 items-center gap-2 rounded-2xl bg-rose-950/90 px-3 py-2 shadow-sm sm:px-4">
-        <Siren className="size-4 animate-pulse" aria-hidden />
-        <span className="text-[11px] font-bold tracking-wider whitespace-nowrap uppercase">
+    <div className="sticky top-0 z-40 flex items-center gap-2 overflow-hidden bg-gradient-to-r from-rose-700 via-red-600 to-rose-700 px-4 py-1 text-white shadow-lg shadow-red-900/20 ring-1 ring-white/10">
+      <div className="flex shrink-0 items-center gap-2 rounded-full bg-white/15 px-3 py-1 shadow-sm ring-1 ring-white/25 backdrop-blur-sm">
+        <Siren className="size-3.5 animate-pulse" aria-hidden />
+        <span className="text-xs font-bold tracking-[0.16em] whitespace-nowrap uppercase">
           Helplines
         </span>
       </div>
 
-      <div className="relative flex flex-1 overflow-hidden">
-        <div className="flex min-w-full shrink-0 animate-marquee items-center gap-8 py-2.5 will-change-transform motion-reduce:animate-none">
+      <div className="relative flex flex-1 min-w-0 overflow-hidden">
+        <div className="flex min-w-full shrink-0 animate-marquee items-center gap-2 py-1 will-change-transform motion-reduce:animate-none">
           {[...HELPLINES, ...HELPLINES, ...HELPLINES].map((h, i) => (
             <a
               key={`${h.number}-${i}`}
               href={`tel:${h.number}`}
               className={cn(
-                "group inline-flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold transition hover:bg-white/10",
+                "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-sm font-semibold text-white/95 transition hover:bg-white/15",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
               )}
             >
-              <span className="flex size-5 items-center justify-center rounded-full bg-white/20">
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/20">
                 <Phone className="size-2.5" aria-hidden />
               </span>
-              <span className="opacity-90 group-hover:opacity-100">{h.label}</span>
-              <span className="text-sm font-bold tabular-nums">{h.number}</span>
+              <span className="opacity-95">{h.label}</span>
+              <span className="text-[15px] font-bold tabular-nums tracking-tight">{h.number}</span>
             </a>
           ))}
         </div>
       </div>
 
-      <div className="mx-1.5 my-1 hidden shrink-0 items-center gap-1.5 rounded-2xl bg-rose-950/90 px-3 py-2 text-[11px] font-semibold shadow-sm sm:flex sm:px-4">
+      <div className="hidden shrink-0 items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-red-600 shadow-sm ring-1 ring-black/5 sm:flex">
         <ShieldAlert className="size-3.5" aria-hidden />
         Tap to call
       </div>

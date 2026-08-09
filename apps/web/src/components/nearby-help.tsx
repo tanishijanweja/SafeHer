@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 
-import { AlertCircle, Building2, Loader2, Phone, Siren, Stethoscope } from "lucide-react";
+import { AlertCircle, Building2, Flame, Loader2, Phone, Siren, Stethoscope } from "lucide-react";
 
 import { Skeleton } from "@safe-her/ui/components/skeleton";
 
@@ -12,7 +12,7 @@ const GROUP_META: Record<EmergencyType, { label: string; icon: typeof Siren }> =
   helpline: { label: "Emergency helplines", icon: Siren },
   police: { label: "Police stations", icon: Building2 },
   hospital: { label: "Hospitals nearby", icon: Stethoscope },
-  fire: { label: "Fire stations", icon: Siren },
+  fire: { label: "Fire stations", icon: Flame },
 };
 
 const ORDER: Record<EmergencyType, number> = {
@@ -37,9 +37,15 @@ export function NearbyHelp({
     () =>
       Array.from(
         services.reduce((map, s) => {
-          const arr = map.get(s.type) ?? [];
-          arr.push(s);
-          map.set(s.type, arr);
+          // The full Delhi dataset holds several places that share a name (e.g.
+          // multiple "Max Hospital" branches). Show each named place once — the
+          // first (nearest) occurrence wins — so the sidebar never repeats rows.
+          const key = s.type;
+          const existing = map.get(key) ?? [];
+          const names = new Set(existing.map((x) => x.name.toLowerCase()));
+          if (names.has(s.name.toLowerCase())) return map;
+          existing.push(s);
+          map.set(key, existing);
           return map;
         }, new Map<EmergencyType, EmergencyService[]>()),
       )
@@ -92,7 +98,7 @@ export function NearbyHelp({
                   <Icon className="size-3.5" />
                   {meta.label}
                 </h4>
-                <ul className="grid gap-1.5">
+                <ul className="grid min-w-0 gap-1.5 overflow-hidden">
                   {items.map((item) => (
                     <NearbyRow key={item.id} item={item} />
                   ))}
@@ -108,8 +114,13 @@ export function NearbyHelp({
 
 function NearbyRow({ item }: { item: EmergencyService }) {
   const callable = Boolean(item.phone);
-  return (
-    <li className="flex items-center gap-2.5 rounded-xl bg-card/80 p-2.5 ring-1 ring-border/60">
+  const hasLocation = typeof item.lat === "number" && typeof item.lng === "number";
+  const mapsHref = hasLocation
+    ? `https://www.google.com/maps?q=${item.lat!.toFixed(6)},${item.lng!.toFixed(6)}&z=16`
+    : null;
+
+  const content = (
+    <>
       <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-red-600/10 text-red-600 ring-1 ring-red-600/15">
         <GroupIcon type={item.type} />
       </span>
@@ -122,6 +133,24 @@ function NearbyRow({ item }: { item: EmergencyService }) {
       <span className="shrink-0 text-[10px] font-medium text-muted-foreground/70">
         {item.distanceLabel}
       </span>
+    </>
+  );
+
+  return (
+    <li className="flex min-w-0 items-center gap-2 rounded-xl bg-card/80 p-2 ring-1 ring-border/60">
+      {mapsHref ? (
+        <a
+          href={mapsHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`Open ${item.name} on Google Maps`}
+          className="flex min-w-0 flex-1 items-center gap-2 transition hover:bg-muted/30"
+        >
+          {content}
+        </a>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center gap-2">{content}</div>
+      )}
       <a
         href={callable ? `tel:${item.phone}` : "#"}
         aria-disabled={!callable}

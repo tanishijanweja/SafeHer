@@ -2,6 +2,8 @@ import { auth } from "@safe-her/auth";
 import prisma from "@safe-her/db";
 import { env } from "@safe-her/env/server";
 import { Hono } from "hono";
+import type { Context } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import reportsRouter from "./routes/reports";
@@ -10,6 +12,7 @@ import contactsRouter from "./routes/contacts";
 import sosRouter from "./routes/sos";
 import newsRouter from "./routes/news";
 import { generateGeohash } from "./services/geohash";
+import { checkRateLimit, rateLimitKey } from "./services/rate-limit";
 import {
   getHistoricalScore,
   calculateLiveScore,
@@ -25,12 +28,44 @@ import {
 import {
   newsRecencyWeight,
 } from "@safe-her/db/news-scoring";
+import { runRetentionCleanup } from "./services/retention";
+import { warmHeatmapCache } from "./routes/heatmap";
 
 const MIN_PREFIX_LEN = MIN_NEWS_PREFIX_LEN;
+
+const IS_PROD = env.NODE_ENV === "production";
 
 const app = new Hono();
 
 app.use(logger());
+
+// ── Global error handling: never leak stack traces or internals to clients. ──
+app.notFound((c) => {
+  return c.json({ error: "Not found" }, 404);
+});
+
+app.onError((error, c) => {
+  console.error("Unhandled error:", error);
+  return c.json({ error: "Internal Server Error" }, 500);
+});
+
+// ── Security headers ───────────────────────────────────────────────────────
+app.use("*", async (c, next) => {
+  const isHttps =
+    c.req.header("x-forwarded-proto") === "https" ||
+    new URL(c.req.url).protocol === "https:";
+  c.header("X-Content-Type-Options", "nosniff");
+  c.header("X-Frame-Options", "DENY");
+  c.header("Referrer-Policy", "strict-origin-when-cross-origin");
+  c.header(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()",
+  );
+  c.header("Cross-Origin-Opener-Policy", "same-origin");
+  if (isHttps) c.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  await next();
+});
+
 app.use(
   "/*",
   cors({
@@ -38,10 +73,84 @@ app.use(
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
     credentials: true,
+    maxAge: 86400,
   }),
 );
 
+// Reject oversized request bodies (the SOS media endpoint has its own higher
+// limit for audio clips, kept together here so JSON endpoints stay small).
+app.use(
+  "*",
+  bodyLimit({
+    maxSize: 12 * 1024 * 1024,
+    onError: (c) => c.json({ error: "Request body too large" }, 413),
+  }),
+);
+
+// ── Rate limiting (brute-force / spam protection) ──────────────────────────
+async function throttle(
+  c: Context,
+  next: () => Promise<unknown>,
+  scope: string,
+  limit: number,
+) {
+  const { allowed, retryAfterSec } = await checkRateLimit(rateLimitKey(c, scope), limit);
+  if (!allowed) {
+    c.header("Retry-After", String(retryAfterSec));
+    return c.json({ error: "Too many requests. Please slow down." }, 429);
+  }
+  await next();
+}
+
+app.use("/api/auth/*", async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  const isSensitive =
+    path.endsWith("/sign-in") ||
+    path.endsWith("/sign-up") ||
+    path.endsWith("/forgot-password") ||
+    path.endsWith("/request-password") ||
+    path.endsWith("/sign-in/email");
+  if (c.req.method === "POST" && isSensitive) {
+    // Strict in production, roomier locally so an active dev machine (browser
+    // plus several tabs polling auth) never trips the guard and shows errors.
+    return throttle(c, next, "auth-write", IS_PROD ? 8 : 30);
+  }
+  await next();
+  // Auth responses carry session cookies and must never be cached by any
+  // shared cache or the browser's history/back-forward cache.
+  c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  c.header("Pragma", "no-cache");
+  c.header("Expires", "0");
+});
+
+app.use("/sos/*", async (c, next) => {
+  if (c.req.method === "POST") {
+    return throttle(c, next, "sos-write", 40);
+  }
+  await next();
+});
+
+app.use("/reports", async (c, next) => {
+  if (c.req.method === "POST") {
+    return throttle(c, next, "reports-write", 20);
+  }
+  await next();
+});
+
+app.use("/contacts", async (c, next) => {
+  if (c.req.method === "POST" || c.req.method === "PATCH" || c.req.method === "DELETE") {
+    return throttle(c, next, "contacts-write", 60);
+  }
+  await next();
+});
+
 app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+
+// Development-only endpoints — never expose DB internals in production.
+app.use("/debug/*", async (c, next) => {
+  if (IS_PROD) return c.json({ error: "Not found" }, 404);
+  await next();
+});
 
 app.get("/", (c) => {
   return c.text("OK");
@@ -62,6 +171,7 @@ app.get("/historical", async (c) => {
     orderBy: {
       score: "desc",
     },
+    take: 2000,
   });
   return c.json(data);
 });
@@ -125,6 +235,27 @@ app.route("/heatmap", heatmapRouter);
 app.route("/contacts", contactsRouter);
 app.route("/sos", sosRouter);
 app.route("/news", newsRouter);
+
+// ── Data-retention sweep + heatmap warm-up. Retention removes expired SOS
+//    events + evidence media so nothing sensitive lingers forever; warming the
+//    heatmap cache keeps the first page load fast instead of 5-10s. ──
+{
+  const INTERVAL_MS = 12 * 60 * 60 * 1000;
+  const bootTimer = setTimeout(() => {
+    void runRetentionCleanup().catch((error) =>
+      console.error("Retention cleanup failed:", error),
+    );
+    void warmHeatmapCache();
+  }, 5_000);
+  bootTimer.unref?.();
+
+  const interval = setInterval(() => {
+    void runRetentionCleanup().catch((error) =>
+      console.error("Retention cleanup failed:", error),
+    );
+  }, INTERVAL_MS);
+  interval.unref?.();
+}
 
 app.get("/debug/news", async (c) => {
   try {
@@ -223,7 +354,6 @@ app.get("/debug/news", async (c) => {
     return c.json(
       {
         error: "Internal Server Error",
-        message: error instanceof Error ? error.message : String(error),
       },
       500,
     );
@@ -315,7 +445,6 @@ app.get("/debug/news/latest", async (c) => {
     return c.json(
       {
         error: "Internal Server Error",
-        message: error instanceof Error ? error.message : String(error),
       },
       500,
     );
@@ -414,7 +543,6 @@ app.get("/debug/news/stats", async (c) => {
     return c.json(
       {
         error: "Internal Server Error",
-        message: error instanceof Error ? error.message : String(error),
       },
       500,
     );

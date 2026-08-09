@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useRouter } from "next/navigation";
-import { Pencil, Phone, Plus, Trash2, UserRound, Users } from "lucide-react";
+import Link from "next/link";
+import { Pencil, Phone, Plus, Trash2, UserRound, UserRoundPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@safe-her/ui/components/button";
@@ -51,7 +52,7 @@ export default function ContactsPage() {
   useEffect(() => {
     if (sessionPending) return;
     if (!session) {
-      router.replace("/login?redirect=/contacts");
+      setLoading(false);
       return;
     }
     void load();
@@ -93,6 +94,32 @@ export default function ContactsPage() {
     return (
       <main className="flex items-center justify-center p-6">
         <Skeleton className="h-40 w-full max-w-lg rounded-2xl" />
+      </main>
+    );
+  }
+
+  if (!session) {
+    return (
+      <main className="relative min-h-0 overflow-y-auto">
+        <div className="mx-auto flex max-w-lg flex-col gap-5 px-4 py-16 sm:px-6">
+          <div className="flex flex-col items-start gap-3 rounded-2xl bg-card/80 p-6 ring-1 ring-border/60">
+            <span className="flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
+              <UserRoundPlus className="size-5" />
+            </span>
+            <div className="space-y-1">
+              <h1 className="text-xl font-bold tracking-tight">Trusted contacts</h1>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Sign in to save the family or friends who should receive your SOS
+                alerts. Your contacts stay private to your account.
+              </p>
+            </div>
+            <Link href="/login?redirect=/contacts" className="inline-flex">
+              <Button className="h-9 rounded-full px-4 text-xs font-semibold">
+                Sign in to manage contacts
+              </Button>
+            </Link>
+          </div>
+        </div>
       </main>
     );
   }

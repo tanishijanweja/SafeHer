@@ -15,6 +15,23 @@ const heatmapRouter = new Hono();
 
 const MIN_PREFIX_LEN = MIN_NEWS_PREFIX_LEN;
 
+// The heatmap is the heaviest endpoint (many Prisma reads + per-cell locality
+// resolution). The underlying risk scores only change when a report is
+// submitted or news is ingested, so we memoise the serialised payload for a
+// short TTL. Repeat loads (every page view, location search, visit) then
+// respond in milliseconds instead of seconds. A longer TTL (5 minutes) plus a
+// boot-time warm-up keeps the first visitor from paying the full query cost.
+const HEATMAP_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+let heatmapCache: { expiresAt: number; body: string } | null = null;
+
+function invalidateHeatmapCache() {
+  heatmapCache = null;
+}
+
+export function getHeatmapCacheInvalidator() {
+  return invalidateHeatmapCache;
+}
+
 const CATEGORY_LABELS: Record<string, string> = {
   sexual_violence: "Sexual violence",
   harassment: "Harassment",
@@ -169,7 +186,44 @@ function resolveCellAreaName(
   return resolveAreaName(lat, lng, ...candidates);
 }
 
+const JSON_RESPONSE_HEADERS = {
+  "Content-Type": "application/json",
+  "Cache-Control": "public, max-age=30, stale-while-revalidate=60",
+} as const;
+
 heatmapRouter.get("/", async (c) => {
+  try {
+    if (heatmapCache && heatmapCache.expiresAt > Date.now()) {
+      return c.text(heatmapCache.body, 200, JSON_RESPONSE_HEADERS);
+    }
+
+    const payload = await buildHeatmapPayload();
+    heatmapCache = {
+      expiresAt: Date.now() + HEATMAP_CACHE_MAX_AGE_MS,
+      body: payload,
+    };
+    return c.text(payload, 200, JSON_RESPONSE_HEADERS);
+  } catch (error) {
+    console.error("/heatmap error:", error);
+    return c.json({ error: "Internal Server Error" }, 500);
+  }
+});
+
+/** Warm the cache shortly after boot so the first visitor never waits ~5-10s. */
+export async function warmHeatmapCache(): Promise<void> {
+  if (heatmapCache && heatmapCache.expiresAt > Date.now()) return;
+  try {
+    const payload = await buildHeatmapPayload();
+    heatmapCache = {
+      expiresAt: Date.now() + HEATMAP_CACHE_MAX_AGE_MS,
+      body: payload,
+    };
+  } catch (error) {
+    console.error("Heatmap warm-up failed:", error);
+  }
+}
+
+async function buildHeatmapPayload(): Promise<string> {
   try {
     const scores = await prisma.riskScore.findMany({
       where: {
@@ -182,7 +236,7 @@ heatmapRouter.get("/", async (c) => {
     });
 
     if (scores.length === 0) {
-      return c.json([]);
+      return "[]";
     }
 
     const cutoff = new Date(Date.now() - NEWS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
@@ -195,6 +249,7 @@ heatmapRouter.get("/", async (c) => {
             publishedAt: { gte: cutoff },
           },
           orderBy: { publishedAt: "desc" },
+          take: 4000,
           select: {
             geohash: true,
             latitude: true,
@@ -216,6 +271,7 @@ heatmapRouter.get("/", async (c) => {
         prisma.newsIncident.findMany({
           where: { localityName: null },
           orderBy: { publishedAt: "desc" },
+          take: 1000,
           select: {
             latitude: true,
             longitude: true,
@@ -225,6 +281,7 @@ heatmapRouter.get("/", async (c) => {
           },
         }),
       prisma.historicalRisk.findMany({
+        take: 4000,
         select: { geohash: true, district: true },
       }),
       prisma.report.groupBy({
@@ -483,17 +540,11 @@ title: string;
       };
     });
 
-    return c.json(areasOut);
+    return JSON.stringify(areasOut);
   } catch (error) {
     console.error("/heatmap error:", error);
-    return c.json(
-      {
-        error: "Internal Server Error",
-        message: error instanceof Error ? error.message : String(error),
-      },
-      500,
-    );
+    throw error;
   }
-});
+}
 
 export default heatmapRouter;

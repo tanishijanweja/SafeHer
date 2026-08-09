@@ -59,7 +59,6 @@ newsRouter.get("/", async (c) => {
     return c.json(
       {
         error: "Internal Server Error",
-        message: error instanceof Error ? error.message : String(error),
       },
       500,
     );

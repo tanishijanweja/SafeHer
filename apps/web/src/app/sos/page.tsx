@@ -7,16 +7,22 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  Building2,
   CheckCircle2,
   Download,
+  Flame,
   HeartPulse,
   Loader2,
+  MessageSquare,
   Mic,
   MicOff,
+  Phone,
   RotateCcw,
   Square,
+  Stethoscope,
   Trash2,
   Users,
+  WifiOff,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,9 +30,18 @@ import {
   ApiError,
   fetchContacts,
   triggerSos,
+  updateSosLocation,
+  uploadSosMedia,
   type SosTriggerResult,
   type TrustedContact,
 } from "@/lib/api";
+import { cacheTrustedContacts, cachedTrustedContacts, isNetworkError } from "@/lib/offline";
+import {
+  enqueueOutbox,
+  listOutbox,
+  removeOutbox,
+  type OutboxOp,
+} from "@/lib/sos-outbox";
 import { authClient } from "@/lib/auth-client";
 import {
   fetchNearbyServices,
@@ -58,6 +73,10 @@ const COUNTDOWN_SECONDS = 5;
 const LOCATION_CHECK_MS = 8000;
 /** Distance that counts as "moved significantly" — notify contacts again. */
 const MOVE_THRESHOLD_KM = 0.3;
+/** While recording, auto-share a fresh audio clip to contacts every minute. */
+const AUDIO_SHARE_SECONDS = 60;
+/** Periodic live-location refresh sent to contacts while SOS is active. */
+const LOCATION_UPDATE_SECONDS = 300;
 
 const EMERGENCY_MESSAGE =
   "I need help right now. Please contact the emergency services or someone near my location immediately.";
@@ -84,6 +103,74 @@ const SERVICE_META: Record<
   fire: { glyph: "fire", color: "#dc2626", label: "Fire" },
   helpline: { glyph: "helpline", color: "#7c3aed", label: "Helpline" },
 };
+
+const SERVICE_ICON: Record<EmergencyType, typeof Building2> = {
+  police: Building2,
+  hospital: Stethoscope,
+  fire: Flame,
+  helpline: Phone,
+};
+
+const ServiceGlyph = ({ type }: { type: EmergencyType }) => {
+  const Icon = SERVICE_ICON[type];
+  return <Icon className="size-4" />;
+};
+
+/**
+ * Rich hover/click card for a nearby emergency service — renders its own white
+ * surface so it reads clearly over the map, matching the live-risk map cards.
+ */
+function ServiceTooltip({ service }: { service: EmergencyService }) {
+  const meta = SERVICE_META[service.type];
+  return (
+    <div className="w-[232px] rounded-xl border border-zinc-200/80 bg-white text-zinc-900 shadow-[0_16px_40px_rgba(24,24,27,0.24),0_0_0_1px_rgba(24,24,27,0.04)]">
+      <div className="flex items-start gap-2.5 px-3 pt-3">
+        <span
+          className="flex size-7 shrink-0 items-center justify-center rounded-lg ring-1 ring-black/5"
+          style={{ backgroundColor: `${meta.color}1f`, color: meta.color }}
+        >
+          <ServiceGlyph type={service.type} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[12px] leading-snug font-bold tracking-tight">
+            {service.name}
+          </p>
+          <p className="mt-0.5 text-[10.5px] font-medium text-zinc-500">
+            {meta.label}
+            {service.distanceLabel ? ` · ${service.distanceLabel}` : ""}
+          </p>
+          {service.phone ? (
+            <p className="mt-1 text-[11px] font-semibold text-zinc-800">{service.phone}</p>
+          ) : null}
+        </div>
+      </div>
+      {service.address ? (
+        <p className="px-3 pt-1.5 text-[10.5px] leading-snug text-zinc-500 line-clamp-2">
+          {service.address}
+        </p>
+      ) : null}
+      <div className="mt-2 flex items-center justify-between gap-2 border-t border-zinc-100 px-3 py-2">
+        <a
+          href={mapsUrlFor(service.lat ?? 0, service.lng ?? 0)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10.5px] font-semibold text-zinc-500 transition-colors hover:text-zinc-900"
+        >
+          Open in Maps
+        </a>
+        {service.phone ? (
+          <a
+            href={`tel:${service.phone}`}
+            className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1.5 text-[11px] leading-none font-bold text-white shadow-sm transition hover:bg-red-700"
+          >
+            <Phone className="size-3" />
+            Call
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 function mapsUrlFor(lat: number, lng: number): string {
   return `https://www.google.com/maps?q=${lat.toFixed(6)},${lng.toFixed(6)}&z=16`;
@@ -124,6 +211,76 @@ export default function SosPage() {
   // Refs so the live-updater can always read the latest location / send point.
   const positionRef = useRef(position);
   const lastSentRef = useRef(position);
+  // Active SOS event id + a guard so snapshots never overlap.
+  const eventIdRef = useRef<string | null>(null);
+  const snapshotBusyRef = useRef(false);
+  // Client-generated id for the local outbox session (used while offline).
+  const sosKeyRef = useRef<string | null>(null);
+
+  // Track connectivity: SOS must keep recording/queuing when offline.
+  const [offline, setOffline] = useState(false);
+
+  /** Replay any SOS events queued while offline, oldest first. */
+  const flushOutbox = useCallback(async () => {
+    const ops = await listOutbox();
+    if (ops.length === 0) return;
+    const eventIds = new Map<string, string>();
+    let synced = 0;
+    let stopped = false;
+    for (const op of ops) {
+      if (stopped) break;
+      try {
+        if (op.kind === "sos") {
+          const res = await triggerSos(op.payload);
+          eventIds.set(op.sosKey, res.event.id);
+          if (op.sosKey === sosKeyRef.current) eventIdRef.current = res.event.id;
+        } else if (op.kind === "loc") {
+          const eventId = eventIds.get(op.sosKey);
+          if (!eventId) continue;
+          await updateSosLocation({ eventId, ...op.payload });
+        } else {
+          const eventId = eventIds.get(op.sosKey);
+          if (!eventId) continue;
+          await uploadSosMedia(eventId, op.blob);
+        }
+        await removeOutbox(op.id);
+        synced += 1;
+      } catch (caught) {
+        if (isNetworkError(caught) || (caught instanceof ApiError && caught.status === 401)) {
+          stopped = true; // offline or signed out — wait
+        } else if (caught instanceof ApiError) {
+          await removeOutbox(op.id); // non-fatal server error — drop this op
+          synced += 1;
+        }
+      }
+    }
+    if (synced > 0) {
+      toast.success("Your offline SOS reached your trusted contacts");
+    }
+  }, []);
+
+  useEffect(() => {
+    const goOffline = () => setOffline(true);
+    const goOnline = () => {
+      setOffline(false);
+      void flushOutbox();
+    };
+    setOffline(!navigator.onLine);
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online", goOnline);
+    return () => {
+      window.removeEventListener("offline", goOffline);
+      window.removeEventListener("online", goOnline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // On first load, if there is connectivity, flush anything the device queued
+  // during an earlier offline emergency.
+  useEffect(() => {
+    if (navigator.onLine) void flushOutbox();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Always track the live location so the map + nearby help stay current.
   useEffect(() => {
@@ -170,48 +327,113 @@ export default function SosPage() {
     };
   }, [position.lat, position.lng]);
 
-  // While SOS is live, re-check location often; if the user moved significantly,
-  // notify contacts with the new live location. Failures never crash the page.
+  // While SOS is live, keep pushing the latest location to contacts: whenever
+  // the user moves significantly AND as a periodic ping (in case GPS stalls),
+  // both reusing the same active event. Offline, the updates are queued and
+  // replayed once the device is back online. Failures never crash the page.
   useEffect(() => {
     if (phase !== "live") return;
-    const sendUpdate = async () => {
+    const pushLocation = async (notifyMoved: boolean) => {
       const current = positionRef.current;
-      const last = lastSentRef.current;
-      const moved = haversineKm(
-        last.lat,
-        last.lng,
-        current.lat,
-        current.lng,
-      );
-      if (!moved || moved < MOVE_THRESHOLD_KM) return;
-      lastSentRef.current = current;
+      const eventId = eventIdRef.current;
+      if (!eventId) {
+        // Offline session — save for later replay.
+        const sosKey = sosKeyRef.current;
+        if (!sosKey) return;
+        await enqueueOutbox({
+          id: `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          kind: "loc",
+          sosKey,
+          payload: {
+            latitude: current.lat,
+            longitude: current.lng,
+            location: mapsUrlFor(current.lat, current.lng),
+          },
+          at: Date.now(),
+        });
+        return;
+      }
       try {
-        await triggerSos({
+        await updateSosLocation({
+          eventId,
           latitude: current.lat,
           longitude: current.lng,
           location: mapsUrlFor(current.lat, current.lng),
-          emergencyMessage: EMERGENCY_MESSAGE,
         });
-        toast.success("Location updated with your contacts");
-      } catch {
-        // A failed update shouldn't end the SOS session.
-        toast.error("Couldn't share your updated location. Keep moving — we'll retry.");
+        if (notifyMoved) toast.success("Live location shared with your contacts");
+      } catch (caught) {
+        if (isNetworkError(caught) && sosKeyRef.current) {
+          await enqueueOutbox({
+            id: `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            kind: "loc",
+            sosKey: sosKeyRef.current,
+            payload: {
+              latitude: current.lat,
+              longitude: current.lng,
+              location: mapsUrlFor(current.lat, current.lng),
+            },
+            at: Date.now(),
+          });
+        } else {
+          toast.error("Couldn't share your updated location. Keep moving — we'll retry.");
+        }
       }
     };
-    const id = window.setInterval(() => void sendUpdate(), LOCATION_CHECK_MS);
-    return () => window.clearInterval(id);
+    const sendUpdate = async () => {
+      const current = positionRef.current;
+      const last = lastSentRef.current;
+      const moved = haversineKm(last.lat, last.lng, current.lat, current.lng);
+      if (!moved || moved < MOVE_THRESHOLD_KM) return;
+      lastSentRef.current = current;
+      await pushLocation(true);
+    };
+    // Short-interval ping so contacts always have a fresh location.
+    const moveId = window.setInterval(() => void sendUpdate(), LOCATION_CHECK_MS);
+    // Steadier "again and again" refresh while the SOS stays active.
+    const pingerId = window.setInterval(
+      () => void pushLocation(false),
+      LOCATION_UPDATE_SECONDS * 1000,
+    );
+    return () => {
+      window.clearInterval(moveId);
+      window.clearInterval(pingerId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
+
+  // While recording, an un-stopped mic auto-shares a fresh audio clip to the
+  // contacts every minute; recording immediately continues. Offline, the clip
+  // is queued locally and uploaded once connectivity returns.
+  useEffect(() => {
+    if (
+      phase !== "live" ||
+      recStatus !== "recording" ||
+      !(eventIdRef.current || sosKeyRef.current)
+    )
+      return;
+    const id = window.setInterval(
+      () => void shareAudioSnapshot(eventIdRef.current),
+      AUDIO_SHARE_SECONDS * 1000,
+    );
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, recStatus]);
 
   useEffect(() => {
     if (isPending || !session) return;
     let cancelled = false;
     setContactsLoading(true);
+    // Seed from the offline cache first so SOS can be armed even with no
+    // connection; the network refresh below overwrites with fresh data.
+    const cached = cachedTrustedContacts();
+    if (cached.length > 0) setContacts(cached);
     fetchContacts()
       .then((data) => {
+        cacheTrustedContacts(data);
         if (!cancelled) setContacts(data);
       })
       .catch(() => {
-        if (!cancelled) setContacts([]);
+        if (!cancelled && cached.length > 0) setContacts(cached);
       })
       .finally(() => {
         if (!cancelled) setContactsLoading(false);
@@ -291,6 +513,48 @@ export default function SosPage() {
     setRecStatus("saved");
   }, []);
 
+  /**
+   * Auto-share the current live audio with trusted contacts. Because this fires
+   * on the "not stopped within the minute" rule, the recorder is re-started so
+   * capture never stops while the SOS is active. With no connectivity the clip
+   * is queued locally and uploaded after reconnect.
+   */
+  const shareAudioSnapshot = useCallback(
+    async (eventId: string | null) => {
+      if (snapshotBusyRef.current) return;
+      const recorder = recorderRef.current;
+      if (!recorder || recorder.state === "inactive") return;
+      snapshotBusyRef.current = true;
+      let restarted = true;
+      try {
+        const rec = await stopMicRecording();
+        if (rec && rec.blob.size >= 1024) {
+          if (eventId) {
+            await uploadSosMedia(eventId, rec.blob);
+          } else if (sosKeyRef.current) {
+            await enqueueOutbox({
+              id: `media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              kind: "media",
+              sosKey: sosKeyRef.current,
+              mimeType: rec.blob.type,
+              blob: rec.blob,
+              at: Date.now(),
+            });
+          }
+          toast.success("Live audio auto-shared with your contacts");
+        }
+        restarted = await startMicRecording();
+      } catch {
+        restarted = await startMicRecording().catch(() => false);
+        toast.error("Couldn't share live audio — recording continues.");
+      } finally {
+        if (!restarted) setMicDenied(true);
+        snapshotBusyRef.current = false;
+      }
+    },
+    [stopMicRecording, startMicRecording],
+  );
+
   // Countdown → fire SOS automatically at zero.
   useEffect(() => {
     if (phase !== "countdown") return;
@@ -317,9 +581,13 @@ export default function SosPage() {
     toast.info("SOS cancelled.");
   }, []);
 
-  // Press the button → mic first, then the countdown.
+  // Press the button → require a session first, then mic + countdown.
   async function handleArmSos() {
     if (phase !== "idle") return;
+    if (!session) {
+      router.push("/login?redirect=/sos");
+      return;
+    }
     setError(null);
     setSent(null);
     setMicDenied(false);
@@ -337,6 +605,11 @@ export default function SosPage() {
     setPhase("sending");
     setError(null);
     const batteryLevel = await getBatteryLevel();
+    // No real connectivity → keep the whole SOS alive on-device and queue it.
+    if (offline) {
+      await enterOfflineSos(batteryLevel);
+      return;
+    }
     try {
       const result = await triggerSos({
         latitude: position.lat,
@@ -345,7 +618,8 @@ export default function SosPage() {
         location: mapsUrlFor(position.lat, position.lng),
         emergencyMessage: EMERGENCY_MESSAGE,
       });
-      lastSentRef.current = position;
+lastSentRef.current = position;
+      eventIdRef.current = result.event.id;
       setSent(result);
       setPhase("live");
       const delivered = countDelivered(result);
@@ -364,9 +638,43 @@ export default function SosPage() {
         router.push("/login?redirect=/sos");
         return;
       }
+      if (isNetworkError(caught)) {
+        // Connection dropped in the middle of sending — queue it.
+        await enterOfflineSos(batteryLevel);
+        return;
+      }
       setError(caught instanceof Error ? caught.message : "Couldn't send SOS. Try again.");
       setPhase("error");
     }
+  }
+
+  /** Start a fully local SOS: continue recording/tracking, save everything for
+   *  replay, and let the user fall back to the phone's SMS app right away. */
+  async function enterOfflineSos(batteryLevel?: number) {
+    const sosKey = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    sosKeyRef.current = sosKey;
+    eventIdRef.current = null;
+    setSent(null);
+    await enqueueOutbox({
+      id: `sos-${Date.now()}`,
+      kind: "sos",
+      sosKey,
+      payload: {
+        latitude: position.lat,
+        longitude: position.lng,
+        batteryLevel,
+        location: mapsUrlFor(position.lat, position.lng),
+        emergencyMessage: EMERGENCY_MESSAGE,
+      },
+      at: Date.now(),
+    });
+    lastSentRef.current = position;
+    setPhase("live");
+    toast.warning(
+      "Offline — SOS is recording and saved to your device. It will auto-send the moment you're back online, or use your phone's SMS now.",
+    );
   }
 
   /** Stop/keep audio or (if already off) turn it back on — user's choice. */
@@ -401,6 +709,8 @@ export default function SosPage() {
       }
     }
     setPhase("ended");
+    eventIdRef.current = null;
+    sosKeyRef.current = null;
   }
 
   async function handleDeleteRecording() {
@@ -420,15 +730,18 @@ export default function SosPage() {
     setMicDenied(false);
     setRecStatus("none");
     setConfirmEnd(false);
+    eventIdRef.current = null;
+    sosKeyRef.current = null;
   }
 
   const noContacts = !contactsLoading && contacts.length === 0;
 
   // Markers for the live map: your position + each nearby service. Always
   // include at least 2 of each of police / hospital / fire, then fill with the
-  // nearest remaining services.
-  const mapPoints = useMemo(() => {
-    const live = { id: "live", lat: position.lat, lng: position.lng, color: "#e11d48", live: true as const };
+  // nearest remaining services. Service pins are memoised independently of the
+  // live point so frequent geolocation updates never re-create (and re-hover)
+  // all the markers — the map stays smooth while a tooltip is open.
+  const servicePoints = useMemo(() => {
     const located = services.filter((s) => s.lat !== undefined && s.lng !== undefined);
     const selected: EmergencyService[] = [];
     const taken = new Set<string>();
@@ -451,33 +764,29 @@ export default function SosPage() {
       selected.push(s);
       taken.add(s.id);
     }
-    const pois = selected.map((s) => ({
+    return selected.map((s) => ({
       id: s.id,
       lat: s.lat!,
       lng: s.lng!,
       color: SERVICE_META[s.type].color,
       glyph: SERVICE_META[s.type].glyph,
-      popup: (
-        <div className="space-y-1 text-left">
-          <p className="text-[13px] font-semibold">
-            {s.name}
-          </p>
-          <p className="text-[11px] text-muted-foreground">
-            {s.phone ?? s.address ?? "No public number"} · {s.distanceLabel}
-          </p>
-          {s.phone && (
-            <a
-              href={`tel:${s.phone}`}
-              className="inline-flex items-center rounded-full bg-red-600 px-2.5 py-1 text-[11px] font-semibold text-white"
-            >
-              Call now
-            </a>
-          )}
-        </div>
-      ),
+      hover: <ServiceTooltip service={s} />,
+      popup: <ServiceTooltip service={s} />,
     }));
-    return [live, ...pois];
-  }, [position, services]);
+  }, [services]);
+
+  const livePoint = useMemo(
+    () => ({
+      id: "live",
+      lat: position.lat,
+      lng: position.lng,
+      color: "#e11d48",
+      live: true as const,
+    }),
+    [position],
+  );
+
+  const mapPoints = useMemo(() => [livePoint, ...servicePoints], [livePoint, servicePoints]);
 
   // Per-contact delivery status while SOS is live.
   const deliveries = useMemo<
@@ -520,30 +829,60 @@ export default function SosPage() {
                     {error}
                   </div>
                 )}
-                <button
-                  type="button"
-                  disabled={noContacts}
-                  onClick={() => void handleArmSos()}
-                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-red-600 text-base font-semibold text-white shadow-lg shadow-red-600/30 transition hover:bg-red-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <HeartPulse className="size-5" />
-                  Send SOS
-                </button>
-                {noContacts ? (
-                  <Link
-                    href="/contacts"
-                    className="inline-flex items-center justify-center gap-1.5 text-sm font-medium text-primary hover:underline"
-                  >
-                    <Users className="size-4" />
-                    Add a trusted contact first
-                  </Link>
+                {!isPending && !session ? (
+                  <div className="flex flex-col gap-2 rounded-2xl bg-card/80 px-4 py-5 ring-1 ring-border/60">
+                    <p className="text-sm font-semibold text-foreground">
+                      Sign in to trigger an SOS
+                    </p>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      Panic SOS needs your account so your trusted contacts can receive your
+                      live location and alerts instantly.
+                    </p>
+                    <Link
+                      href="/login?redirect=/sos"
+                      className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-red-600 text-base font-semibold text-white shadow-lg shadow-red-600/30 transition hover:bg-red-700 active:scale-[0.98]"
+                    >
+                      <HeartPulse className="size-5" />
+                      Sign in to continue
+                    </Link>
+                  </div>
                 ) : (
-                  <Link
-                    href="/contacts"
-                    className="text-center text-xs font-medium text-muted-foreground hover:text-foreground"
-                  >
-                    Manage your SOS contacts
-                  </Link>
+                  <>
+                    <button
+                      type="button"
+                      disabled={noContacts && !offline}
+                      onClick={() => void handleArmSos()}
+                      className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-red-600 text-base font-semibold text-white shadow-lg shadow-red-600/30 transition hover:bg-red-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <HeartPulse className="size-5" />
+                      Send SOS
+                    </button>
+                    {noContacts ? (
+                      offline ? (
+                        <p className="flex items-start gap-1.5 px-2 text-xs leading-relaxed text-muted-foreground">
+                          <WifiOff className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                          You're offline with no saved contacts. Your SOS is still
+                          recorded on this device and will be sent once you add a
+                          trusted contact and reconnect.
+                        </p>
+                      ) : (
+                        <Link
+                          href="/contacts"
+                          className="inline-flex items-center justify-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                        >
+                          <Users className="size-4" />
+                          Add a trusted contact first
+                        </Link>
+                      )
+                    ) : (
+                      <Link
+                        href="/contacts"
+                        className="text-center text-xs font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        Manage your SOS contacts
+                      </Link>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -612,6 +951,42 @@ export default function SosPage() {
                     {formatTime(elapsed)}
                   </span>
                 </div>
+
+                {recStatus === "recording" && (
+                  <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                    <span className="mt-1 inline-block size-1.5 shrink-0 animate-pulse rounded-full bg-red-600" />
+                    Live audio is continuously recorded and auto-shared with every
+                    trusted contact each minute. Your location goes out every 5
+                    minutes.
+                  </p>
+                )}
+
+                {offline && (
+                  <div className="flex flex-col gap-2 rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:ring-amber-500/30">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                      <WifiOff className="size-4" />
+                      Offline — SOS is recorded and saved on this device
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-amber-700/80 dark:text-amber-400/80">
+                      It will auto-send to your trusted contacts as soon as you're
+                      back online. To alert someone right now, hand your phone to a
+                      trusted person or open your phone's SMS app below.
+                    </p>
+                    {contacts.length > 0 && (
+                      <a
+                        href={`sms:${contacts
+                          .map((c) => c.phone.replace(/\D/g, ""))
+                          .join(",")}?body=${encodeURIComponent(
+                          `${EMERGENCY_MESSAGE} ${mapsUrlFor(position.lat, position.lng)}`,
+                        )}`}
+                        className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-800 transition hover:bg-amber-50 dark:border-amber-500/40 dark:bg-transparent dark:text-amber-300 dark:hover:bg-amber-500/10"
+                      >
+                        <MessageSquare className="size-4" />
+                        Use phone's SMS now
+                      </a>
+                    )}
+                  </div>
+                )}
 
                 {confirmEnd ? (
                   <div className="flex flex-col gap-2 rounded-xl bg-red-50 p-4 ring-1 ring-red-200 dark:bg-red-500/10 dark:ring-red-500/30">

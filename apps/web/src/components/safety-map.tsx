@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createPortal } from "react-dom";
 
-import { divIcon, type LeafletMouseEvent } from "leaflet";
+import { divIcon, type LeafletEvent, type LeafletMouseEvent } from "leaflet";
 import {
   CircleMarker,
   MapContainer,
@@ -46,6 +46,8 @@ type MapPoint = {
   glyph?: GlyphKey;
   /** Renders a large pulsing "you are here" pin. */
   live?: boolean;
+  /** Lets the user drag the pin to pick a precise spot. */
+  draggable?: boolean;
   popup?: React.ReactNode;
   hover?: React.ReactNode;
 };
@@ -107,6 +109,8 @@ type SafetyMapProps = {
   flyToTarget?: { center: { lat: number; lng: number }; zoom: number } | null;
   /** Fired whenever a point/pin is clicked (used to keep controlled state in sync). */
   onPointClick?: (id: string) => void;
+  /** Fired when a draggable point is dropped at a new position. */
+  onPointDragEnd?: (id: string, lat: number, lng: number) => void;
 };
 
 type HoverCardState = {
@@ -117,9 +121,9 @@ type HoverCardState = {
   closing?: boolean;
 };
 
-const HOVER_CLOSE_DELAY_MS = 150;
-const HOVER_OPEN_DELAY_MS = 250;
-const HOVER_FADE_MS = 120;
+const HOVER_CLOSE_DELAY_MS = 160;
+const HOVER_OPEN_DELAY_MS = 120;
+const HOVER_FADE_MS = 110;
 const HOVER_CARD_WIDTH = 360;
 const HOVER_CARD_MARGIN = 10;
 
@@ -204,6 +208,7 @@ function PointMarker({
   onDeactivate,
   onHover,
   onHoverEnd,
+  onDragEnd,
 }: {
   point: MapPoint;
   id: string;
@@ -213,6 +218,7 @@ function PointMarker({
   onDeactivate: () => void;
   onHover: (id: string, node: React.ReactNode, lat: number, lng: number) => void;
   onHoverEnd: () => void;
+  onDragEnd: (id: string, lat: number, lng: number) => void;
 }) {
   const openDetails = useCallback(
     (e?: LeafletMouseEvent) => {
@@ -239,8 +245,15 @@ function PointMarker({
           onHoverEnd();
         }
       },
+      dragend: point.draggable
+        ? (e: LeafletEvent) => {
+            const target = e.target as { getLatLng?: () => { lat: number; lng: number } };
+            const pos = target.getLatLng?.();
+            if (pos) onDragEnd(id, pos.lat, pos.lng);
+          }
+        : undefined,
     }),
-    [openDetails, hasHover, onHover, onHoverEnd, id, point.hover, point.lat, point.lng],
+    [openDetails, hasHover, onHover, onHoverEnd, id, point.hover, point.lat, point.lng, point.draggable, onDragEnd],
   );
 
   const detailPopup = point.popup ? (
@@ -335,6 +348,7 @@ function PointMarker({
     <Marker
       position={[point.lat, point.lng]}
       icon={pinIcon}
+      draggable={point.draggable}
       eventHandlers={eventHandlers}
     >
       {detailPopup}
@@ -413,6 +427,11 @@ function FloatingLegend() {
  * Renders the rich hover card in a fixed-position portal (never clipped by the
  * map/container). Re-anchors on the marker and clamps to the viewport edges so
  * it is always fully visible.
+ *
+ * The card shrink-wraps to its content's real width (so a compact SOS tooltip
+ * stays compact) and is repositioned directly on the DOM inside a
+ * requestAnimationFrame — no React re-render on every map "move" — which keeps
+ * panning/zooming smooth.
  */
 function HoverCardPortal({
   hover,
@@ -425,8 +444,7 @@ function HoverCardPortal({
 }) {
   const map = useMap();
   const cardRef = useRef<HTMLDivElement | null>(null);
-  const [pos, setPos] = useState({ x: 0, y: 0 });
-  const [ready, setReady] = useState(false);
+  const rafRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
 
   // React's synthetic onMouseEnter/onMouseLeave are unreliable for portal
   // content, so we detect card entry/exit from the native (bubbling)
@@ -456,8 +474,10 @@ function HoverCardPortal({
     const mapEl = map.getContainer();
     const pt = map.latLngToContainerPoint([hover.lat, hover.lng]);
     const rect = mapEl.getBoundingClientRect();
+    // The card shrink-wraps to its content, so measure the real rendered width
+    // instead of assuming a fixed card size.
     const cardW = Math.min(
-      HOVER_CARD_WIDTH,
+      el.offsetWidth || HOVER_CARD_WIDTH,
       window.innerWidth - HOVER_CARD_MARGIN * 2,
     );
     const cardH = el.offsetHeight || 240;
@@ -474,29 +494,47 @@ function HoverCardPortal({
     if (y < m) y = vy + 14;
     if (y + cardH > window.innerHeight - m) y = Math.max(m, window.innerHeight - cardH - m);
 
-    setPos({ x, y });
-    setReady(true);
+    // Direct DOM write (translate3d never triggers layout) keeps this 60fps and
+    // avoids re-rendering the whole card on every pan/zoom tick.
+    el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    el.style.visibility = "visible";
   }, [map, hover.lat, hover.lng]);
 
-  useEffect(() => {
-    updatePosition();
-    map.on("move", updatePosition);
-    map.on("zoomstart", updatePosition);
-    map.on("zoom", updatePosition);
-    map.on("resize", updatePosition);
+  const schedulePosition = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(updatePosition);
+  }, [updatePosition]);
 
-    const onWindow = () => updatePosition();
-    window.addEventListener("resize", onWindow);
-    window.addEventListener("scroll", onWindow, true);
+  useEffect(() => {
+    schedulePosition();
+    map.on("move", schedulePosition);
+    map.on("zoomstart", schedulePosition);
+    map.on("zoom", schedulePosition);
+    map.on("resize", schedulePosition);
+
+    const onViewportEvent = () => schedulePosition();
+    window.addEventListener("resize", onViewportEvent);
+    window.addEventListener("scroll", onViewportEvent, true);
+
+    // Re-anchor if the card's own content grows (e.g. media loading in late).
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined" && cardRef.current) {
+      observer = new ResizeObserver(schedulePosition);
+      observer.observe(cardRef.current);
+    }
+
     return () => {
-      map.off("move", updatePosition);
-      map.off("zoomstart", updatePosition);
-      map.off("zoom", updatePosition);
-      map.off("resize", updatePosition);
-      window.removeEventListener("resize", onWindow);
-      window.removeEventListener("scroll", onWindow, true);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      map.off("move", schedulePosition);
+      map.off("zoomstart", schedulePosition);
+      map.off("zoom", schedulePosition);
+      map.off("resize", schedulePosition);
+      window.removeEventListener("resize", onViewportEvent);
+      window.removeEventListener("scroll", onViewportEvent, true);
+      observer?.disconnect();
     };
-  }, [map, updatePosition]);
+  }, [map, schedulePosition]);
 
   if (typeof document === "undefined" || typeof window === "undefined") return null;
 
@@ -509,17 +547,10 @@ function HoverCardPortal({
         "safeher-hover-card",
         hover.closing && "safeher-hover-card--closing",
       )}
-      style={{
-        position: "fixed",
-        left: pos.x,
-        top: pos.y,
-        zIndex: 4000,
-        visibility: ready ? "visible" : "hidden",
-        width: Math.min(HOVER_CARD_WIDTH, window.innerWidth - HOVER_CARD_MARGIN * 2),
-        maxWidth: "calc(100vw - 16px)",
-      }}
     >
-      <div key={hover.id}>{hover.node}</div>
+      <div key={hover.id} className="safeher-hover-card-anim">
+        {hover.node}
+      </div>
     </div>,
     document.body,
   );
@@ -540,6 +571,7 @@ export default function SafetyMap({
   activePointId,
   flyToTarget = null,
   onPointClick,
+  onPointDragEnd,
 }: SafetyMapProps) {
   const isCoarse = useIsCoarsePointer();
   const [internalActiveId, setInternalActiveId] = useState<string | null>(null);
@@ -692,15 +724,27 @@ export default function SafetyMap({
     >
       <style>{`
         .safeher-hover-card {
+          position: fixed;
+          left: 0;
+          top: 0;
+          z-index: 4000;
+          width: fit-content;
+          visibility: hidden;
+          will-change: transform;
+          pointer-events: auto;
+        }
+        .safeher-hover-card-anim {
           transform-origin: bottom center;
           animation: safeher-card-in 130ms cubic-bezier(0.16, 1, 0.3, 1);
           will-change: transform, opacity;
         }
         .safeher-hover-card--closing {
+          pointer-events: none;
+        }
+        .safeher-hover-card--closing .safeher-hover-card-anim {
           opacity: 0;
           transform: scale(0.97);
           transition: opacity 110ms ease, transform 110ms ease;
-          pointer-events: none;
         }
         @keyframes safeher-card-in {
           from {
@@ -866,6 +910,7 @@ export default function SafetyMap({
               onDeactivate={deactivate}
               onHover={requestHover}
               onHoverEnd={handleSourceLeave}
+              onDragEnd={(pId, lat, lng) => onPointDragEnd?.(pId, lat, lng)}
             />
           );
         })}

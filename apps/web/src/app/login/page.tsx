@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { authClient } from "@/lib/auth-client";
+import { safeRedirect } from "@/lib/safe-redirect";
 
 import Loader from "@/components/loader";
 import SignInForm from "@/components/sign-in-form";
@@ -14,7 +15,7 @@ function LoginContent() {
   const [showSignIn, setShowSignIn] = useState(true);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get("redirect") || "/";
+  const redirect = safeRedirect(searchParams.get("redirect"));
   const { data: session, isPending } = authClient.useSession();
 
   useEffect(() => {

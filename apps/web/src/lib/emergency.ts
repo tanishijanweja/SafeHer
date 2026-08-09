@@ -36,6 +36,8 @@ export function getHelplines(): EmergencyService[] {
   const list: Array<Omit<EmergencyService, "distanceKm" | "distanceLabel">> = [
     { id: "helpline-112", name: "National Emergency", type: "helpline", phone: "112" },
     { id: "helpline-100", name: "Police (Emergency)", type: "helpline", phone: "100" },
+    { id: "helpline-101", name: "Fire (Emergency)", type: "helpline", phone: "101" },
+    { id: "helpline-102", name: "Ambulance (Emergency)", type: "helpline", phone: "102" },
     { id: "helpline-1091", name: "Women Helpline", type: "helpline", phone: "1091" },
     { id: "helpline-1098", name: "Child Helpline (Childline)", type: "helpline", phone: "1098" },
     { id: "helpline-109", name: "Domestic Violence Helpline", type: "helpline", phone: "109" },
@@ -109,11 +111,26 @@ const TYPE_BY_TAG: Record<string, EmergencyType> = {
  * Delhi list per category when the live data is thin, and always returns the
  * standard helplines on top.
  */
+/**
+ * Guarantee React keys — the full dataset contains several places that share a
+ * name (e.g. multiple "Max Hospital" branches), so an id derived from the name
+ * alone would collide. Appends a numeric suffix on repeats.
+ */
+function makeUniqueId(seen: Set<string>, base: string): string {
+  let id = base;
+  let n = 2;
+  while (seen.has(id)) id = `${base}-${n++}`;
+  seen.add(id);
+  return id;
+}
+
 export async function fetchNearbyServices(
   lat: number,
   lng: number,
 ): Promise<EmergencyService[]> {
   const services: EmergencyService[] = [];
+  const seenIds = new Set<string>();
+  const uniqueId = (base: string) => makeUniqueId(seenIds, base);
 
   // Load the full real Delhi dataset (177 police, 842 hospitals, 22 fire)
   // at runtime via fetch — safer than bundling it as code, and fails
@@ -127,7 +144,7 @@ export async function fetchNearbyServices(
         for (const item of fullData[category] || []) {
           const distance = haversineKm(lat, lng, item.lat, item.lng);
           services.push({
-            id: `${category}-full-${item.name.replace(/\s+/g, "-")}`,
+            id: uniqueId(`${category}-full-${item.name.replace(/\s+/g, "-")}`),
             name: item.name,
             type: category,
             distanceKm: distance,
@@ -171,7 +188,7 @@ export async function fetchNearbyServices(
         if (elLat === undefined || elLng === undefined) continue;
         const distance = haversineKm(lat, lng, elLat, elLng);
         services.push({
-          id: `${el.type}-${el.id}`,
+          id: uniqueId(`${el.type}-${el.id}`),
           name: tags.name ?? defaultNameFor(amenity),
           type: amenity,
           distanceKm: distance,
@@ -189,8 +206,10 @@ export async function fetchNearbyServices(
     // Overpass may be unreachable — fall back to the curated lists below.
   }
 
-  const enriched = [...services, ...fallbacksFor(lat, lng, services)]
-    .sort((a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0));
+  const enriched = [
+    ...services,
+    ...fallbacksFor(lat, lng, services, uniqueId),
+  ].sort((a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0));
 
   return [...getHelplines(), ...enriched];
 }
@@ -203,6 +222,7 @@ function fallbacksFor(
   lat: number,
   lng: number,
   existing: EmergencyService[],
+  uniqueId: (base: string) => string,
 ): EmergencyService[] {
   const count = (type: EmergencyType) =>
     existing.filter((s) => s.type === type).length;
@@ -215,7 +235,7 @@ function fallbacksFor(
       need -= 1;
       const distance = haversineKm(lat, lng, p.lat, p.lng);
       out.push({
-        id: `${type}-fallback-${p.name.replace(/\s+/g, "-")}`,
+        id: uniqueId(`${type}-fallback-${p.name.replace(/\s+/g, "-")}`),
         name: p.name,
         type,
         distanceKm: distance,

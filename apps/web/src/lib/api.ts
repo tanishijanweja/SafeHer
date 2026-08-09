@@ -64,19 +64,16 @@ async function readError(res: Response): Promise<ApiError> {
 
 export type Report = {
   id: string;
-  userId: string;
   title: string;
   description: string;
   category: string;
   severity: number;
   latitude: number;
   longitude: number;
-  imageUrl: string | null;
-  aiSummary: string | null;
   isSpam: boolean;
   confidenceLevel: ReportConfidence;
   createdAt: string;
-  updatedAt: string;
+  incidentDate: string | null;
   geohash: string;
   /** Nearest named Delhi locality, resolved server-side. */
   areaName?: string;
@@ -166,6 +163,46 @@ export async function triggerSos(input: {
   emergencyMessage?: string;
 }): Promise<SosTriggerResult> {
   const res = await fetch(`${API_URL}/sos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw await readError(res);
+  return (await res.json()) as SosTriggerResult;
+}
+
+type SosMediaResult = {
+  mediaId: string;
+  mediaUrl: string;
+  notifiedContacts: NotifiedContact[];
+};
+
+/** Upload a live audio/video clip for an active SOS event. The server re-notifies contacts. */
+export async function uploadSosMedia(
+  eventId: string,
+  blob: Blob,
+): Promise<SosMediaResult> {
+  const form = new FormData();
+  form.append("eventId", eventId);
+  form.append("file", blob, "sos-clip");
+  const res = await fetch(`${API_URL}/sos/media`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  if (!res.ok) throw await readError(res);
+  return (await res.json()) as SosMediaResult;
+}
+
+/** Push the latest live location for an active SOS event (reuses the same event). */
+export async function updateSosLocation(input: {
+  eventId: string;
+  latitude?: number;
+  longitude?: number;
+  location?: string;
+}): Promise<SosTriggerResult> {
+  const res = await fetch(`${API_URL}/sos/update`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",

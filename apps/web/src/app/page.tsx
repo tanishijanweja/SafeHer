@@ -46,26 +46,27 @@ const MAP_CENTER = { lat: 28.61, lng: 77.2 };
 // TODO: remove once reports + heatmap always return data in empty environments
 const DEMO_REPORTS: Report[] = [
   {
-    id: "demo-1",
-    userId: "demo",
-    title: "Dark stretch at Hauz Khas Village side lane",
+id: "demo-1",
+    
+    title: "Dark stretch at Hauz Khas village side lane",
     description:
       "The lane connecting Hauz Khas village to the lake is completely dark after 10 pm. Multiple streetlights are broken...",
     category: "Dark Alley / Isolated Spot",
     severity: 3,
     latitude: 28.5494,
     longitude: 77.2001,
-    imageUrl: null,
-    aiSummary: null,
+    
+    
     isSpam: false,
     confidenceLevel: "UNVERIFIED",
+    incidentDate: new Date(Date.now() - 1 * 86400000).toISOString(),
     createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-    updatedAt: new Date().toISOString(),
+    
     geohash: "",
   },
   {
     id: "demo-2",
-    userId: "demo",
+    
     title: "Late night harassment at Nehru Place bus queue",
     description:
       "While waiting for a bus at Nehru Place around 11:30 pm, a man kept brushing against women in the queue. No cctv...",
@@ -73,17 +74,18 @@ const DEMO_REPORTS: Report[] = [
     severity: 3,
     latitude: 28.5491,
     longitude: 77.253,
-    imageUrl: null,
-    aiSummary: null,
+    
+    
     isSpam: false,
     confidenceLevel: "UNVERIFIED",
+    incidentDate: new Date(Date.now() - 1 * 86400000).toISOString(),
     createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-    updatedAt: new Date().toISOString(),
+    
     geohash: "",
   },
   {
     id: "demo-3",
-    userId: "demo",
+    
     title: "Cable strung across footpath in Rohini",
     description:
       "A torn cable hangs across the footpath near Rohini Sector 7 market. In the dark it is invisible and could easily electrocute...",
@@ -91,12 +93,13 @@ const DEMO_REPORTS: Report[] = [
     severity: 2,
     latitude: 28.7495,
     longitude: 77.1195,
-    imageUrl: null,
-    aiSummary: null,
+    
+    
     isSpam: false,
     confidenceLevel: "UNVERIFIED",
+    incidentDate: new Date(Date.now() - 2 * 86400000).toISOString(),
     createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-    updatedAt: new Date().toISOString(),
+    
     geohash: "",
   },
 ];
