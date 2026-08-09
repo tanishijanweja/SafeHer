@@ -43,64 +43,6 @@ const SafetyMap = dynamic(() => import("@/components/safety-map"), {
 
 const MAP_CENTER = { lat: 28.61, lng: 77.2 };
 
-// TODO: remove once reports + heatmap always return data in empty environments
-const DEMO_REPORTS: Report[] = [
-  {
-    id: "demo-1",
-    userId: "demo",
-    title: "Dark stretch at Hauz Khas Village side lane",
-    description:
-      "The lane connecting Hauz Khas village to the lake is completely dark after 10 pm. Multiple streetlights are broken...",
-    category: "Dark Alley / Isolated Spot",
-    severity: 3,
-    latitude: 28.5494,
-    longitude: 77.2001,
-    imageUrl: null,
-    aiSummary: null,
-    isSpam: false,
-    confidenceLevel: "UNVERIFIED",
-    createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-    updatedAt: new Date().toISOString(),
-    geohash: "",
-  },
-  {
-    id: "demo-2",
-    userId: "demo",
-    title: "Late night harassment at Nehru Place bus queue",
-    description:
-      "While waiting for a bus at Nehru Place around 11:30 pm, a man kept brushing against women in the queue. No cctv...",
-    category: "HARASSMENT",
-    severity: 3,
-    latitude: 28.5491,
-    longitude: 77.253,
-    imageUrl: null,
-    aiSummary: null,
-    isSpam: false,
-    confidenceLevel: "UNVERIFIED",
-    createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-    updatedAt: new Date().toISOString(),
-    geohash: "",
-  },
-  {
-    id: "demo-3",
-    userId: "demo",
-    title: "Cable strung across footpath in Rohini",
-    description:
-      "A torn cable hangs across the footpath near Rohini Sector 7 market. In the dark it is invisible and could easily electrocute...",
-    category: "Poor Lighting",
-    severity: 2,
-    latitude: 28.7495,
-    longitude: 77.1195,
-    imageUrl: null,
-    aiSummary: null,
-    isSpam: false,
-    confidenceLevel: "UNVERIFIED",
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-    updatedAt: new Date().toISOString(),
-    geohash: "",
-  },
-];
-
 function SeverityDots({ severity }: { severity: number }) {
   const label = severityLabel(severity);
   const filled = label === "Mild" ? 2 : label === "Moderate" ? 3 : 4;
@@ -154,7 +96,6 @@ function ConfidenceBadge({ level }: { level: Report["confidenceLevel"] }) {
 export default function Home() {
   const [reports, setReports] = useState<Report[]>([]);
   const [heatmap, setHeatmap] = useState<HeatmapArea[]>([]);
-  const [usingDemo, setUsingDemo] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -165,13 +106,11 @@ export default function Home() {
         if (cancelled) return;
         setReports(r.filter((x) => !x.isSpam));
         setHeatmap(h);
-        setUsingDemo(r.length === 0 && h.length === 0);
       } catch {
         if (cancelled) return;
         // TODO: surface toast once global toast is wired for offline API
         setReports([]);
         setHeatmap([]);
-        setUsingDemo(true);
       }
     }
 
@@ -181,10 +120,16 @@ export default function Home() {
     };
   }, []);
 
-  const displayReports = reports.length > 0 ? reports : usingDemo ? DEMO_REPORTS : [];
-  const recent = displayReports.slice(0, 3);
+  const recent = reports.slice(0, 3);
 
-  const totalReports = displayReports.length;
+  const totalReports = reports.length;
+  const verifiedCount = reports.filter(
+    (r) => r.confidenceLevel === "COMMUNITY_CORROBORATED",
+  ).length;
+  const avgSeverity =
+    totalReports === 0
+      ? 0
+      : reports.reduce((s, r) => s + (r.severity || 0), 0) / totalReports;
 
   const areas = useMemo(() => groupCellsIntoAreas(heatmap), [heatmap]);
 

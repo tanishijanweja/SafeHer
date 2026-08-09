@@ -187,7 +187,7 @@ heatmapRouter.get("/", async (c) => {
 
     const cutoff = new Date(Date.now() - NEWS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
-    const [newsRows, demoRows, historicalRows, reportGroups, recentReports] =
+    const [newsRows, historicalRows, reportGroups, recentReports] =
       await Promise.all([
         prisma.newsIncident.findMany({
           where: {
@@ -209,19 +209,6 @@ heatmapRouter.get("/", async (c) => {
             affectsHeatmap: true,
             severity: true,
             confidence: true,
-          },
-        }),
-        // Demo/historical seed incidents (no live locality). They only feed the
-        // popup's "Historical / demo" section — never "Recent news" below.
-        prisma.newsIncident.findMany({
-          where: { localityName: null },
-          orderBy: { publishedAt: "desc" },
-          select: {
-            latitude: true,
-            longitude: true,
-            publishedAt: true,
-            title: true,
-            sourceDomain: true,
           },
         }),
       prisma.historicalRisk.findMany({
@@ -261,11 +248,11 @@ heatmapRouter.get("/", async (c) => {
     const reportsByGh = new Map<
       string,
       Array<{
-title: string;
+      title: string;
       description: string | null;
       category: string | null;
       createdAt: Date;
-      incidentDate: Date | null;
+      incidentDate: Date;
     }>
     >();
     for (const r of recentReports) {
@@ -274,17 +261,6 @@ title: string;
       if (arr.length >= 3) continue;
       arr.push(r);
       reportsByGh.set(r.geohash, arr);
-    }
-
-    // Seed/demo incidents have no stored locality, but we still tag each one to
-    // the gazetteer locality it physically sits in so it can appear only under
-    // that area's "Historical / demo" section.
-    const demoRowsByLocality = new Map<string, typeof demoRows>();
-    for (const d of demoRows) {
-      const name = nearestDelhiPlace(d.latitude, d.longitude).name;
-      const arr = demoRowsByLocality.get(name) ?? [];
-      if (arr.length < 8) arr.push(d);
-      demoRowsByLocality.set(name, arr);
     }
 
     // ---- Aggregate cells into one payload entry per locality ----
@@ -305,8 +281,7 @@ title: string;
       categories: Set<string>;
       reasons: Set<string>;
       articles: Map<string, { title: string; publishedAt: string; sourceDomain: string | null; url: string | null }>;
-      reports: Map<string, { title: string; description: string | null; category: string | null; createdAt: string; incidentDate: string | null }>;
-      demos: Map<string, { title: string; date: string }>;
+      reports: Map<string, { title: string; description: string | null; category: string | null; createdAt: string; incidentDate: string }>;
       districts: Set<string>;
       latestActivityAt: Date;
       cells: Geom[];
@@ -328,7 +303,6 @@ title: string;
           reasons: new Set(),
           articles: new Map(),
           reports: new Map(),
-          demos: new Map(),
           districts: new Set(),
           latestActivityAt,
           cells: [],
@@ -360,11 +334,6 @@ title: string;
       }
 
       const areaName = resolveCellAreaName(lat, lng, newsLocality, histDistrict);
-
-      const demoNotes = (demoRowsByLocality.get(areaName) ?? []).map((d) => ({
-        title: d.title,
-        date: new Date(d.publishedAt).toISOString(),
-      }));
 
       const categories = new Set<string>();
       for (const n of matchedNews) {
@@ -444,14 +413,9 @@ title: string;
             description: r.description,
             category: formatCategory(r.category),
             createdAt: new Date(r.createdAt).toISOString(),
-            incidentDate: r.incidentDate
-              ? new Date(r.incidentDate).toISOString()
-              : null,
+            incidentDate: new Date(r.incidentDate).toISOString(),
           });
         }
-      }
-      for (const d of demoNotes) {
-        if (!acc.demos.has(d.title)) acc.demos.set(d.title, d);
       }
       if (histDistrict) acc.districts.add(histDistrict);
       if (latestActivityAt.getTime() > acc.latestActivityAt.getTime()) {
@@ -476,7 +440,6 @@ title: string;
         communityReports: [...acc.reports.values()].slice(0, 3),
         historicalDistrict: acc.districts.size > 0 ? [...acc.districts][0] : null,
         historicalSource: "NCRB",
-        demoHistorical: [...acc.demos.values()].slice(0, 3),
         lastUpdated: new Date(acc.latestActivityAt).toISOString(),
         polygon: geom.polygon,
         center: geom.center,

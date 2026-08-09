@@ -157,7 +157,6 @@ Run from `packages/db` after env + DB are ready (some need API keys in `apps/ser
 ```bash
 cd packages/db
 bun run db:import              # historical import
-bun run db:seed-incidents      # seed sample incidents
 bun run db:fetch               # data.gov.in crime data
 bun run db:fetch-news          # GDELT news
 bun run db:fetch-news-gkg      # GDELT GKG

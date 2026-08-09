@@ -14,12 +14,7 @@ export type CommunityReportRef = {
   description?: string | null;
   category?: string | null;
   createdAt: string;
-  incidentDate?: string | null;
-};
-
-export type DemoHistoricalIncidentRef = {
-  title: string;
-  date: string;
+  incidentDate: string;
 };
 
 /**
@@ -41,7 +36,6 @@ export type HeatmapArea = {
   communityReports: CommunityReportRef[];
   historicalDistrict?: string | null;
   historicalSource?: string | null;
-  demoHistorical?: DemoHistoricalIncidentRef[];
   lastUpdated: string;
   /** Leaflet latlng ring: [lat, lng][] */
   polygon: [number, number][];
@@ -60,7 +54,6 @@ export type AreaRegion = {
   communityReports: CommunityReportRef[];
   historicalDistrict: string | null;
   historicalSource: string | null;
-  demoHistorical: DemoHistoricalIncidentRef[];
   lastUpdated: string;
   /** Leaflet latlng rings: [lat, lng][] */
   polygon: [number, number][];
@@ -129,7 +122,6 @@ export function groupCellsIntoAreas(areas: HeatmapArea[]): AreaRegion[] {
       communityReports: area.communityReports ?? [],
       historicalDistrict: area.historicalDistrict ?? null,
       historicalSource: area.historicalSource ?? "NCRB",
-      demoHistorical: area.demoHistorical ?? [],
       lastUpdated: area.lastUpdated,
       polygon: area.polygon ?? [],
       center: area.center ?? { lat: 0, lng: 0 },
@@ -140,7 +132,7 @@ export function groupCellsIntoAreas(areas: HeatmapArea[]): AreaRegion[] {
 /**
  * True when a locality actually has something useful to show, using the real
  * backend fields (not the display-layer). A card is only worth rendering when
- * it has news, community reports, incident tags, real historical/demo data, or
+ * it has news, community reports, incident tags, real historical data, or
  * a genuine risk explanation. The "No community reports" reason is boilerplate
  * injected by `buildSimpleReasons` and is never treated as content on its own.
  */
@@ -149,7 +141,6 @@ export function hasMeaningfulAreaData(area: AreaRegion): boolean {
   if (area.communityReports.length > 0) return true;
   if ((area.recentCategories ?? []).length > 0) return true;
   if (area.historicalDistrict && area.historicalDistrict.length > 0) return true;
-  if ((area.demoHistorical ?? []).length > 0) return true;
   return area.reasons.some((reason) => reason.trim() !== "No community reports");
 }
 

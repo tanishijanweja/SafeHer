@@ -32,7 +32,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
 export async function analyzeReport(
   description: string,
-  incidentDate?: Date,
+  incidentDate: Date,
 ): Promise<ReportAnalysis> {
   const config = {
     responseMimeType: "application/json",

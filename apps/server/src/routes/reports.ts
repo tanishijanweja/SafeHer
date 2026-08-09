@@ -13,7 +13,7 @@ const reportSchema = z.object({
   description: z.string().min(1),
   latitude: z.number(),
   longitude: z.number(),
-  incidentDate: z.string().optional(),
+  incidentDate: z.string(),
 });
 
 const VALID_CATEGORIES = Object.values(ReportCategory);
@@ -54,7 +54,7 @@ reportsRouter.post("/", async (c) => {
 
   const { description, latitude, longitude, incidentDate } = parsed.data;
 
-  const incidentDateObj = incidentDate ? new Date(incidentDate) : undefined;
+  const incidentDateObj = new Date(incidentDate);
 
   const geohash = generateGeohash(latitude, longitude);
 

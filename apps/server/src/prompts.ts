@@ -8,7 +8,7 @@ function formatPromptDate(d: Date): string {
 
 export function REPORT_ANALYSIS_PROMPT(
   description: string,
-  incidentDate?: Date,
+  incidentDate: Date,
 ): string {
   return `
 You are a senior safety and incident analyst for SafeHer, a women's safety platform.
@@ -21,13 +21,13 @@ and trip monitoring. Accuracy and consistency matter more than creativity.
 Read the <incident_report> below and analyze it.
 </task>
 
-${incidentDate ? `<incident_date>
+<incident_date>
 The reporter selected ${formatPromptDate(incidentDate)} as when the incident happened. Treat this
 as an APPROXIMATE time — the reporter may not remember the exact minute. Incorporate this
 date/time into the summary (e.g. "around 9:00 PM on 6 August 2026") so the heatmap popup shows
 when it occurred. If the report text states a specific time, prefer the text's time over the
 selected one.
-</incident_date>` : ""}
+</incident_date>
 
 <incident_report>
 ${description}

@@ -64,9 +64,9 @@ function SourceBadge({
 
 /**
  * Returns the URL only when it is a genuinely external http(s) link that can be
- * opened in a new tab. Anything else — relative paths, `seed://`/`/seed/…`
- * synthetic links, empty/malformed values — is treated as invalid and returns
- * null so we never render a "Read Article" button that navigates locally.
+ * opened in a new tab. Anything else — relative paths, empty/malformed values —
+ * is treated as invalid and returns null so we never render a "Read Article"
+ * button that navigates locally.
  */
 /**
  * External news link button. Uses `!text-white` so Leaflet's default
@@ -263,11 +263,9 @@ export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
                     ) : null}
                     {formatDateTime(r.createdAt)}
                   </span>
-                  {r.incidentDate ? (
-                    <span className="text-[10px] font-medium text-amber-600">
-                      Incident: {formatDateTime(r.incidentDate)}
-                    </span>
-                  ) : null}
+                  <span className="text-[10px] font-medium text-amber-600">
+                    Incident: {formatDateTime(r.incidentDate)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -291,28 +289,6 @@ export function AreaHoverTooltip({ area }: { area: AreaRegion }) {
                   ) : null}
                 </span>
               </li>
-            </ul>
-          </section>
-        )}
-
-        {area.demoHistorical && area.demoHistorical.length > 0 && (
-          <section>
-            <h4 className="mb-1.5 text-[10px] font-bold tracking-[0.14em] text-zinc-400 uppercase">
-              Demo Historical Data
-            </h4>
-            <ul className="space-y-1.5">
-              {area.demoHistorical.map((d) => (
-                <li
-                  key={d.title}
-                  className="flex flex-col gap-0.5 rounded-lg bg-zinc-50 px-2.5 py-2 ring-1 ring-zinc-100"
-                >
-                  <SourceBadge type="historical" label="Demo" />
-                  <span className="text-[12px] leading-snug text-zinc-800">{d.title}</span>
-                  <span className="text-[10.5px] font-medium text-zinc-400">
-                    {formatDateTime(d.date)}
-                  </span>
-                </li>
-              ))}
             </ul>
           </section>
         )}

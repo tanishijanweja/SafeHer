@@ -99,12 +99,11 @@ export default function ReportPage() {
     setLocationDenied(false);
   }
 
-  // Combine the optionally-selected date and approximate time into a single
-  // timestamp. A time without a date defaults to today; a date without a time
-  // keeps midnight.
+  // Combine the selected date and the optional approximate time into a single
+  // timestamp. A date without a time keeps midnight.
   function combineDateTime(): Date | null {
-    if (!incidentDate && !incidentTime) return null;
-    const base = incidentDate ? new Date(incidentDate) : new Date();
+    if (!incidentDate) return null;
+    const base = new Date(incidentDate);
     if (incidentTime) {
       const [h, m] = incidentTime.split(":").map(Number);
       if (Number.isFinite(h) && Number.isFinite(m)) base.setHours(h, m, 0, 0);
@@ -119,6 +118,11 @@ export default function ReportPage() {
       return;
     }
 
+    if (!incidentDate) {
+      toast.error("Please select the date the incident happened");
+      return;
+    }
+
     const res = await fetch(`${API_URL}/reports`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -127,7 +131,7 @@ export default function ReportPage() {
         description,
         latitude: location.lat,
         longitude: location.lng,
-        incidentDate: combineDateTime()?.toISOString(),
+        incidentDate: combineDateTime()!.toISOString(),
       }),
     });
 
@@ -204,7 +208,12 @@ export default function ReportPage() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="incident-date">Date of incident (optional)</Label>
+            <Label htmlFor="incident-date">
+              Date of incident
+              <span className="text-destructive" aria-hidden>
+                {" "}*
+              </span>
+            </Label>
             <DatePicker
               id="incident-date"
               value={incidentDate}
