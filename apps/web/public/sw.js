@@ -69,16 +69,27 @@ async function cacheFirst(event, cacheName) {
 
 async function staleWhileRevalidate(event, cacheName) {
   const cached = await caches.match(event.request, { cacheName });
-  const refresher = fetch(event.request)
-    .then(async (res) => {
-      if (res.ok) {
-        const cache = await caches.open(cacheName);
-        cache.put(event.request, res.clone());
-      }
-      return res;
-    })
-    .catch(() => null);
-  return cached || (await refresher);
+  if (cached) {
+    // Serve the stale copy instantly and refresh the cache out-of-band.
+    fetch(event.request)
+      .then((res) => {
+        if (res.ok) {
+          return caches
+            .open(cacheName)
+            .then((cache) => cache.put(event.request, res.clone()));
+        }
+      })
+      .catch(() => {});
+    return cached;
+  }
+  // No cached copy: do a normal network fetch. A failed fetch rejects the
+  // response chain (a network error) rather than returning null.
+  const res = await fetch(event.request);
+  if (res.ok) {
+    const cache = await caches.open(cacheName);
+    cache.put(event.request, res.clone());
+  }
+  return res;
 }
 
 async function networkFirstNavigation(event) {

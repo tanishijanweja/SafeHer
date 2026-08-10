@@ -10,6 +10,23 @@ import { generateGeohash } from "../services/geohash";
 import { refreshRiskScore } from "../services/risk";
 import { getHeatmapCacheInvalidator } from "./heatmap";
 
+/** zod's .datetime() validates only the ISO-8601 *format*; enforce that it is
+ *  also a real calendar date. Otherwise "2024-13-40T00:00:00Z" passes zod but
+ *  `new Date()` yields Invalid Date (and "2024-02-30" silently rolls over to
+ *  Mar 1), which then fails or corrupts the Prisma insert at runtime.
+ *  The leading date portion is parsed directly, so timezone offsets can't
+ *  shift the comparison. */
+function isRealCalendarDate(value: string): boolean {
+  if (Number.isNaN(new Date(value).getTime())) return false;
+  const [y, m, d] = value.slice(0, 10).split("-").map(Number);
+  if (y === undefined || m === undefined || d === undefined) return false;
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) {
+    return false;
+  }
+  const daysInMonth = new Date(y, m, 0).getDate();
+  return d >= 1 && d <= daysInMonth;
+}
+
 const reportSchema = z.object({
   description: z.string().min(10).max(2000),
   latitude: z.number().min(-90).max(90),
@@ -18,6 +35,9 @@ const reportSchema = z.object({
     .string()
     .datetime({ offset: true })
     .max(50)
+    .refine(isRealCalendarDate, {
+      message: "incidentDate must be a real calendar date",
+    })
     .optional(),
 });
 

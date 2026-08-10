@@ -152,7 +152,10 @@ sosRouter.post("/media", async (c) => {
     return c.json({ error: "Empty file" }, 400);
   }
   if ((file as { size: number }).size > MAX_MEDIA_BYTES) {
-    return c.json({ error: "Recording is too large (max 50 MB)" }, 413);
+    return c.json(
+      { error: `Recording is too large (max ${MAX_MEDIA_BYTES / (1024 * 1024)} MB)` },
+      413,
+    );
   }
 
   if (eventId) {
