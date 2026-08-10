@@ -102,15 +102,24 @@ async function throttle(
   await next();
 }
 
+// Write endpoints on better-auth 1.6.25 that accept credentials, mint sessions,
+// or fire emails — the actual brute-force / abuse surface (verified against the
+// installed dist: auth/api/routes). Matched by exact auth sub-path rather than
+// string suffix so the guard can't be dodged by appending or moving segments.
+const SENSITIVE_AUTH_PATHS = new Set([
+  "/sign-in/email",
+  "/sign-in/social",
+  "/sign-up/email",
+  "/request-password-reset",
+  "/reset-password",
+  "/verify-password",
+  "/send-verification-email",
+]);
+
 app.use("/api/auth/*", async (c, next) => {
   const path = new URL(c.req.url).pathname;
-  const isSensitive =
-    path.endsWith("/sign-in") ||
-    path.endsWith("/sign-up") ||
-    path.endsWith("/forgot-password") ||
-    path.endsWith("/request-password") ||
-    path.endsWith("/sign-in/email");
-  if (c.req.method === "POST" && isSensitive) {
+  const authPath = path.replace(/^\/api\/auth/, "").replace(/\/+$/, "") || "/";
+  if (c.req.method === "POST" && SENSITIVE_AUTH_PATHS.has(authPath)) {
     // Strict in production, roomier locally so an active dev machine (browser
     // plus several tabs polling auth) never trips the guard and shows errors.
     return throttle(c, next, "auth-write", IS_PROD ? 8 : 30);
