@@ -95,32 +95,35 @@ export function clearRateLimits() {
   buckets.clear();
 }
 
-/** True when the server runs behind a deployment platform proxy (Vercel,
- *  Cloudflare, Fly, etc.) whose `x-forwarded-for` header is trustworthy. */
-const IS_PROD = process.env.NODE_ENV === "production";
-
 /**
- * Client identifier for rate limiting. The `x-forwarded-for` header is fully
- * attacker-controlled, so it is only trusted when the platform proxy sets it in
- * production (first entry = the real client). Otherwise we fall back to the
- * platform-set proxy headers or a shared "local" bucket, which prevents a
+ * Client-IP headers (cf-connecting-ip, x-real-ip, x-forwarded-for) are fully
+ * attacker-controlled unless the hosting proxy overwrites them. They are only
+ * consulted when the operator sets TRUSTED_PROXY_IP_HEADERS to confirm that
+ * (e.g. Cloudflare, which strips inbound copies, or nginx proxy_set_header).
+ * Otherwise every request falls into a shared "local" bucket, which prevents a
  * remote user from forging a fresh identity per request to bypass throttles.
  * No PII is kept.
  */
+const TRUST_PROXY_IP_HEADERS =
+  process.env.TRUSTED_PROXY_IP_HEADERS === "true" ||
+  process.env.TRUSTED_PROXY_IP_HEADERS === "1";
+
 export function rateLimitKey(
   c: { req: { header: (name: string) => string | undefined } },
   scope: string,
 ): string {
-  const cfConnectingIp = c.req.header("cf-connecting-ip");
-  if (cfConnectingIp?.trim()) return `${cfConnectingIp.trim()}|${scope}`;
+  if (TRUST_PROXY_IP_HEADERS) {
+    const cfConnectingIp = c.req.header("cf-connecting-ip");
+    if (cfConnectingIp?.trim()) return `${cfConnectingIp.trim()}|${scope}`;
 
-  const realIp = c.req.header("x-real-ip");
-  if (realIp?.trim()) return `${realIp.trim()}|${scope}`;
+    const realIp = c.req.header("x-real-ip");
+    if (realIp?.trim()) return `${realIp.trim()}|${scope}`;
 
-  const xff = c.req.header("x-forwarded-for");
-  if (IS_PROD && xff && xff.trim()) {
-    const client = xff.split(",")[0]?.trim();
-    if (client) return `${client}|${scope}`;
+    const xff = c.req.header("x-forwarded-for");
+    if (xff && xff.trim()) {
+      const client = xff.split(",")[0]?.trim();
+      if (client) return `${client}|${scope}`;
+    }
   }
 
   return `local|${scope}`;

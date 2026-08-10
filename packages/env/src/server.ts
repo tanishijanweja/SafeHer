@@ -12,6 +12,9 @@ export const env = createEnv({
     // Optional: shared, multi-instance rate-limit store (Upstash REST-compatible).
     RATE_LIMIT_REDIS_URL: z.string().url().optional(),
     RATE_LIMIT_REDIS_TOKEN: z.string().optional(),
+    // Only trust proxy-set client-IP headers (cf-connecting-ip, x-real-ip,
+    // x-forwarded-for) when the operator behind Cloudflare/nginx opt-in.
+    TRUSTED_PROXY_IP_HEADERS: z.enum(["true", "1"]).optional(),
   },
   runtimeEnv: process.env,
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
