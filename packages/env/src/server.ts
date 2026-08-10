@@ -15,6 +15,9 @@ export const env = createEnv({
     // Only trust proxy-set client-IP headers (cf-connecting-ip, x-real-ip,
     // x-forwarded-for) when the operator behind Cloudflare/nginx opt-in.
     TRUSTED_PROXY_IP_HEADERS: z.enum(["true", "1"]).optional(),
+    // Dedicated HMAC key for signed media links. When unset, media signing
+    // derives from BETTER_AUTH_SECRET; signing fails closed if neither exists.
+    SOS_MEDIA_SECRET: z.string().min(32).optional(),
   },
   runtimeEnv: process.env,
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,

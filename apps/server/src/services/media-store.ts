@@ -25,13 +25,19 @@ const MEDIA_TTL_MS = Number(process.env.SOS_MEDIA_TTL_SECONDS ?? 7 * 24 * 3600) 
 /**
  * HMAC key for signed media links. Prefer a dedicated SOS_MEDIA_SECRET;
  * otherwise derive from the auth secret so links can't be forged without it.
+ * If neither is configured, fail closed — a hardcoded, guessable key would let
+ * anyone forge valid signed URLs and read any victim's SOS audio.
  */
 function signingSecret(): string {
   const explicit = process.env.SOS_MEDIA_SECRET?.trim();
   if (explicit) return explicit;
-  return createHmac("sha256", "safeher-media-signing")
-    .update(process.env.BETTER_AUTH_SECRET ?? "unsafe-dev-secret")
-    .digest("hex");
+  const derivedFrom = process.env.BETTER_AUTH_SECRET?.trim();
+  if (derivedFrom) {
+    return createHmac("sha256", "safeher-media-signing").update(derivedFrom).digest("hex");
+  }
+  throw new Error(
+    "Media signing key is not configured: set SOS_MEDIA_SECRET or BETTER_AUTH_SECRET",
+  );
 }
 
 export function uploadDir(): string {
