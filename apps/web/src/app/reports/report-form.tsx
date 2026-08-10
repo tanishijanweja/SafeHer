@@ -312,7 +312,7 @@ export default function ReportPage() {
               className="rounded-2xl"
             />
             <p className="text-[11px] text-muted-foreground">
-              {descriptionTrimmed.length}/200 characters
+              {descriptionTrimmed.length}/2000 characters
               {descriptionTrimmed.length > 0 && descriptionTrimmed.length < 10
                 ? " — a short sentence helps the AI grade severity better"
                 : ""}

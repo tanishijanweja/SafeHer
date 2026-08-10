@@ -116,7 +116,7 @@ reportsRouter.post("/", async (c) => {
           category,
           severity: analysis.severity,
           geohash,
-          incidentDate: incidentDateObj,
+          incidentDate: incidentDateObj!,
         },
       });
 
@@ -140,7 +140,7 @@ reportsRouter.post("/", async (c) => {
       category,
       severity: analysis.severity,
       geohash,
-      incidentDate: incidentDateObj,
+      incidentDate: incidentDateObj!,
     },
   });
 
