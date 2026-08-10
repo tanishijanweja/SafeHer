@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { auth } from "@safe-her/auth";
 import prisma from "@safe-her/db";
+import { env } from "@safe-her/env/server";
 
 import {
   notifyTrustedContacts,
@@ -43,6 +44,14 @@ function coordinatesOf(lat?: number, lng?: number): string | null {
   return lat !== undefined && lng !== undefined
     ? `${lat.toFixed(6)},${lng.toFixed(6)}`
     : null;
+}
+
+/** Canonical base for emergency media links. Built from the configured public
+ *  URL, never from the request's Host header, so a spoofed host can't poison
+ *  the links that get signed, stored in audioUrl, and SMS'd to contacts. */
+function mediaBaseFor(id: string): string {
+  const origin = env.BETTER_AUTH_URL.replace(/\/+$/, "");
+  return `${origin}/sos/media/${id}`;
 }
 
 const sosRouter = new Hono();
@@ -170,7 +179,7 @@ sosRouter.post("/media", async (c) => {
     return c.json({ error: "Unsupported media type" }, 415);
   }
   const id = saved.id;
-  const mediaBase = `${new URL(c.req.url).origin}/sos/media/${id}`;
+  const mediaBase = mediaBaseFor(id);
   const mediaUrl = signMediaUrl(mediaBase);
 
   let notifiedContacts: Awaited<ReturnType<typeof notifyTrustedContacts>> = [];
@@ -207,7 +216,7 @@ sosRouter.get("/media/:id", async (c) => {
   // unexpired signature. The web app never fetches them directly; only the
   // short-lived links shared with trusted contacts carry one.
   const check = verifyMediaRequest(
-    `${new URL(c.req.url).origin}/sos/media/${id}`,
+    mediaBaseFor(id),
     c.req.query("exp"),
     c.req.query("s"),
   );
