@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "../index.css";
 import Header from "@/components/header";
 import Providers from "@/components/providers";
+import ServiceWorkerRegister from "@/components/service-worker-register";
 import TrustedContactsOnboarding from "@/components/trusted-contacts-onboarding";
 
 const geistSans = Geist({
@@ -35,6 +36,7 @@ export default function RootLayout({
             <div className="min-h-0 overflow-y-auto">{children}</div>
           </div>
           <TrustedContactsOnboarding />
+          <ServiceWorkerRegister />
         </Providers>
       </body>
     </html>

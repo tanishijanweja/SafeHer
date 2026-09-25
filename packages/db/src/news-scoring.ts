@@ -78,6 +78,22 @@ export function normalizeNewsScore(weightedSum: number): number {
   return Math.min(Math.max(weightedSum / MAX_INCIDENTS_FOR_FULL_SCORE, 0), 1.0);
 }
 
+/**
+ * True when a news row is synthetic seed/demo data rather than live GDELT news.
+ * Seed rows must never appear as a live "News Article" (no badge, no link); they
+ * belong under historical/demo data only.
+ */
+export function isSeedNews(row: {
+  dedupeKey?: string | null;
+  url?: string | null;
+  sourceDomain?: string | null;
+}): boolean {
+  if (row.dedupeKey?.startsWith("seed:")) return true;
+  if (row.url?.startsWith("seed://")) return true;
+  if (row.sourceDomain === "seed.safeher.local") return true;
+  return false;
+}
+
 /** Fields a news row must expose to be selected for a cell's heatmap risk. */
 export type HeatmapNewsRow = {
   geohash: string;
@@ -110,6 +126,7 @@ export function cellLocality(cellGeohash: string): string {
  * Selection is strictly by the article's OWN locality (its stored
  * `localityName`), not by geohash prefix, distance or nearest-neighbour reuse:
  *   - affectsHeatmap must be true and the article within the news window
+ *   - it must not be synthetic seed/demo data
  *   - it must have a concrete localityName
  *   - that localityName must equal the cell's resolved locality (so an article
  *     only ever appears under the locality it actually belongs to).
@@ -130,6 +147,7 @@ export function selectHeatmapNews<T extends HeatmapNewsRow>(
   for (const row of rows) {
     if (!row.affectsHeatmap || row.publishedAt < cutoff) continue;
     if (newsRecencyWeight(row.publishedAt, now) <= 0) continue;
+    if (isSeedNews(row)) continue;
     if (!row.localityName || !row.localityName.trim()) continue;
     if (row.localityName.trim() !== cellLoc) continue;
 

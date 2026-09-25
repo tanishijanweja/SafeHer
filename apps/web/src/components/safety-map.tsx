@@ -678,12 +678,13 @@ export default function SafetyMap({
     handleSourceLeave();
   }, [handleSourceLeave]);
 
-  const tileUrl = darkTiles
-    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-    : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+  // OSM tiles are free and require no API key (CARTO raster now requires `?key=`).
+  // `darkTiles` is kept for prop compatibility; both modes now use the same OSM URL.
+  void darkTiles;
+  const tileUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 
   const attribution =
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>';
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
   return (
     <div
